@@ -1,3 +1,4 @@
+import { PlaceAudio } from './audio/PlaceAudio'
 import { NavControls } from './ui/NavControls'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { Experience } from './scene/Experience'
@@ -68,6 +69,7 @@ export default function App() {
       <TourOverlay />
       <Viewpoints />
       <NavControls />
+      <PlaceAudio />
       <Hint />
       <Loader />
       <Keys />
