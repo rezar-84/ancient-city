@@ -4,12 +4,12 @@ import { LANDMARKS } from '../content/landmarks'
 import { LANG_LABEL, PLACE_SOUND, langForYear, type VoiceLine } from '../content/soundscapes'
 import { getTerrain } from '../scene/terrainData'
 import { rig, flightListeners } from '../scene/camera'
-import { ensureAudio, onVoice, playUi, playVoice, setBedLevels, setMusic, stopVoice } from './engine'
+import { ensureAudio, onVoice, playAmbientOneShot, playUi, playVoice, setBedLevels, setMusic, stopVoice } from './engine'
 import { GRID } from '../content/grid'
 
 const smooth = (a: number, b: number, x: number) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t) }
 /** beds that also exist in today's landscape (nature), the rest are the ancient city */
-const NATURE = new Set(['spring', 'necropolis'])
+const NATURE = new Set(['spring', 'necropolis-wind'])
 const CHRISTIAN = new Set(['martyrium', 'philip-church', 'cathedral'])
 
 /** Drives the place soundscape from camera position, selection, mode and era. No DOM output except
@@ -57,14 +57,14 @@ export function PlaceAudio() {
           w = smooth(280, 40, focus) * smooth(1500, 260, zoom)
         }
         if (s.selected === l.id) w = Math.max(w, s.mode === 'plan' ? 0.55 : 0.9)
-        if (w > 0) add(ps.bed, w * 0.85)
+        if (w > 0) add(ps.bed, w * 0.6)
       }
       // the living city around you when the whole-city layer is on
       if (s.showGrid && s.mode === 'explore' && s.era === 'ancient') {
         const [ax, az] = t.toLocal(...GRID.axisFrom), [bx, bz] = t.toLocal(...GRID.axisTo)
         const mx = (ax + bx) / 2, mz = (az + bz) / 2
         const inCity = smooth(750, 350, Math.hypot(ctl.target.x - mx, ctl.target.z - mz))
-        add('street', inCity * smooth(1600, 300, zoom) * 0.6)
+        add('street', inCity * smooth(1600, 300, zoom) * 0.4)
       }
       setBedLevels(levels)
     }, 120)
@@ -85,6 +85,20 @@ export function PlaceAudio() {
       setMusic(track)
     }, 400)
     return () => window.clearInterval(id)
+  }, [])
+
+  // nature: now and then a soft gust of wind or distant birds, never constant
+  useEffect(() => {
+    let t = 0
+    const next = () => {
+      t = window.setTimeout(() => {
+        const s = useApp.getState()
+        if (s.mode !== 'intro') playAmbientOneShot(Math.random() < 0.6 ? 'gust' : 'birds', 0.5 + Math.random() * 0.4)
+        next()
+      }, 18000 + Math.random() * 30000)
+    }
+    next()
+    return () => window.clearTimeout(t)
   }, [])
 
   // event sounds

@@ -4,6 +4,12 @@ import { useApp } from '../store'
 import { useT } from '../i18n'
 import { LANDMARKS } from '../content/landmarks'
 
+/** Bump when public/models is regenerated (scripts/export_models.ts): /models is cached for a week by nginx. */
+const MODEL_REV = '2026-11-16'
+/** Generated warm afternoon sky (scripts/ar/writers.ts) — bundled, no CDN. */
+const ENV_HDR = '/models/env-hierapolis.hdr'
+const rev = (url: string) => url + (url.includes('?') ? '&' : '?') + 'v=' + MODEL_REV
+
 /** Full-screen 3D model viewer with "place on your table" AR (WebXR/Scene Viewer on Android, Quick Look on iOS). */
 export default function ARViewer() {
   const t = useT()
@@ -23,17 +29,23 @@ export default function ARViewer() {
       </div>
       <div className="relative min-h-0 flex-1">
         {createElement('model-viewer', {
-          src: l.model.glb,
-          'ios-src': l.model.usdz,
+          src: rev(l.model.glb),
+          'ios-src': l.model.usdz ? rev(l.model.usdz) : undefined,
           ar: true,
           'ar-modes': 'webxr scene-viewer quick-look',
-          'ar-scale': 'auto',
+          'ar-scale': 'auto', // model is baked at 1:150 (~0.72 m wide) so it sits on a table; pinch to resize
+          'ar-placement': 'floor',
+          'quick-look-browsers': 'safari chrome',
           'camera-controls': true,
           'auto-rotate': true,
           'camera-orbit': '180deg 62deg auto',
+          'min-camera-orbit': 'auto 15deg auto',
+          'max-camera-orbit': 'auto 88deg auto', // never dip under the display plinth
           'shadow-intensity': '1',
-          exposure: '1.05',
-          'environment-image': 'neutral',
+          'shadow-softness': '0.85',
+          'tone-mapping': 'neutral',
+          exposure: '1',
+          'environment-image': ENV_HDR,
           alt: l.name[lang],
           style: { width: '100%', height: '100%', background: 'transparent' },
         },

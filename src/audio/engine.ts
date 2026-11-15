@@ -13,7 +13,7 @@ export type Layer = 'music' | 'ambience' | 'places' | 'voices' | 'ui'
 export const LAYERS: Layer[] = ['music', 'ambience', 'places', 'voices', 'ui']
 
 export const settings: { master: number } & Record<Layer, number> = {
-  master: 0.7, music: 0.45, ambience: 0.35, places: 0.8, voices: 0.85, ui: 0.6,
+  master: 0.7, music: 0.4, ambience: 0.22, places: 0.5, voices: 0.85, ui: 0.5,
 }
 
 let ctx: AudioContext | null = null
@@ -157,6 +157,19 @@ export async function playVoice(id: string) {
 
 // ---- interface sounds ----------------------------------------------------------------------
 export type UiSound = 'ui-click' | 'whoosh' | 'drum' | 'shimmer' | 'open' | 'hover'
+
+/** an occasional one-shot on the ambience layer (wind gust, distant birds) */
+export function playAmbientOneShot(id: 'gust' | 'birds', gain = 1) {
+  if (!ctx || ctx.state !== 'running' || settings.ambience <= 0) return
+  void load(`/audio/sfx/${id}.mp3`).then((buf) => {
+    if (!buf || !ctx) return
+    const src = ctx.createBufferSource(); src.buffer = buf
+    src.playbackRate.value = 0.9 + Math.random() * 0.2
+    const pan = ctx.createStereoPanner(); pan.pan.value = Math.random() * 1.6 - 0.8
+    const g = ctx.createGain(); g.gain.value = gain
+    src.connect(g).connect(pan).connect(bus.ambience); src.start()
+  })
+}
 const lastPlayed: Partial<Record<UiSound, number>> = {}
 const MIN_GAP: Partial<Record<UiSound, number>> = { 'ui-click': 0.06, hover: 0.08, drum: 0.8, shimmer: 0.6, open: 0.3 }
 export function playUi(id: UiSound, gain = 1) {

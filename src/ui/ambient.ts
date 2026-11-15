@@ -2,7 +2,7 @@
  *  narration ducking. Starts on the first user gesture. */
 import { LAYERS, applySettings, duckLayers, ensureAudio, layerInput, settings, stopVoice, type Layer } from '../audio/engine'
 
-const KEY = 'hierapolis.sound.v2'
+const KEY = 'hierapolis.sound.v3' // v3: quieter defaults, insect-free ambience
 
 let el: HTMLAudioElement | null = null
 let started = false
@@ -23,7 +23,7 @@ export function startAmbient() {
   started = true
   const c = ensureAudio()
   if (!el) {
-    el = new Audio('/audio/ambient.mp3'); el.loop = true
+    el = new Audio('/audio/sfx/breeze.mp3'); el.loop = true
     const input = layerInput('ambience')
     if (c && input) c.createMediaElementSource(el).connect(input)
   }
