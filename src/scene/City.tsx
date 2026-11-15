@@ -8,6 +8,7 @@ import { PLAN } from '../content/plan'
 import { useApp } from '../store'
 import { getMaterials } from './materials'
 import { sceneUniforms } from './Terrain'
+import { MONUMENT_FOOTPRINTS, registerFootprint } from './footprints'
 
 /** Patch shared building materials once: procedural masonry (courses + joints + per-block tint + weathering),
  * roof-tile channels, and plan-mode ink. All computed from world position, so no texture downloads. */
@@ -110,6 +111,7 @@ export function City({ terrain }: { terrain: Terrain }) {
   const pieces = useMemo<Piece[]>(() => {
     patchMaterials()
     const out: Piece[] = []
+    MONUMENT_FOOTPRINTS.length = 0
     // monuments
     for (const l of LANDMARKS) {
       if (!l.builder || !BUILDERS[l.builder]) continue
@@ -120,6 +122,7 @@ export function City({ terrain }: { terrain: Terrain }) {
       const yaw = THREE.MathUtils.degToRad(l.rotation ?? 0)
       g.position.set(x, l.builderOpts?.sink !== undefined ? terrain.heightAt(x, z) - Number(l.builderOpts.sink) : groundUnder(terrain, x, z, r), z)
       g.rotation.y = yaw
+      registerFootprint(box, x, z, yaw)
       g.userData.landmark = l.id
       shadowAll(g)
       out.push({ obj: g, built: l.built, until: l.until, id: l.id, flatten: true })

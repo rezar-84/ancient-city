@@ -6,6 +6,7 @@ import { ERAS, TIMELINE } from '../content/timeline'
 import { HISTORIC_MAPS } from '../content/images'
 import { Lightbox } from './LandmarkPanel'
 import { useState } from 'react'
+import { GRID } from '../content/grid'
 
 const MIN = -200, MAX = 1400
 
@@ -15,6 +16,7 @@ export function PlanOverlay() {
   const mode = useApp((s) => s.mode)
   const year = useApp((s) => s.year)
   const selected = useApp((s) => s.selected)
+  const showGrid = useApp((s) => s.showGrid)
   const [maps, setMaps] = useState(false)
   if (mode !== 'plan') return null
   const era = ERAS.find((e) => year >= e.from && year < e.to)
@@ -42,18 +44,14 @@ export function PlanOverlay() {
           })}
         </ol>
         <p className="mt-3 border-t border-ink/20 pt-2 text-[11px] leading-snug text-ink/60">{t('planNote')}</p>
+        {showGrid && <p className="mt-2 text-[11px] leading-snug text-ink/60">{GRID.note[lang]}</p>}
+        <p className="mt-2 text-[11px] leading-snug text-ink/50">{t('planHint')}</p>
       </div>
 
       {HISTORIC_MAPS.length > 0 && (
         <button className="glass btn-ghost absolute left-4 top-20 z-10 md:left-72" onClick={() => setMaps(true)}>🗺 {t('historicMaps')} · {HISTORIC_MAPS.length}</button>
       )}
       {maps && <Lightbox items={HISTORIC_MAPS} index={0} onClose={() => setMaps(false)} />}
-
-      {/* north arrow + scale */}
-      <div className="pointer-events-none absolute bottom-36 right-6 z-10 flex flex-col items-center text-parchment drop-shadow">
-        <svg width="34" height="46" viewBox="0 0 34 46"><path d="M17 2 L28 40 L17 32 L6 40 Z" fill="#efe2c4" stroke="#2b2118" strokeWidth="1.5" /><path d="M17 2 L17 32 L6 40 Z" fill="#2b2118" /></svg>
-        <span className="font-display text-sm">N</span>
-      </div>
 
       {/* timeline */}
       <div className={'glass absolute inset-x-3 bottom-3 z-10 mx-auto max-w-4xl rounded-2xl px-5 py-3 sm:bottom-5 ' + (selected ? 'sm:left-6 sm:right-[460px]' : 'sm:inset-x-6')}>

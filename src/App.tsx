@@ -1,3 +1,4 @@
+import { NavControls } from './ui/NavControls'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { Experience } from './scene/Experience'
 import { Intro } from './ui/Intro'
@@ -66,6 +67,7 @@ export default function App() {
       <LandmarkPanel />
       <TourOverlay />
       <Viewpoints />
+      <NavControls />
       <Hint />
       <Loader />
       <Keys />

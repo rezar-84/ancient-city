@@ -14,16 +14,17 @@ gsap.ticker.lagSmoothing(0)
 let tl: gsap.core.Timeline | null = null
 
 export function killFlight() { tl?.kill(); tl = null }
+export function isFlying() { return !!tl && tl.isActive() }
 
 /** Smoothly fly camera to `pos` looking at `target`. Arcs upward on long flights. */
-export function flyTo(pos: THREE.Vector3Tuple, target: THREE.Vector3Tuple, duration = 2.4): Promise<void> {
+export function flyTo(pos: THREE.Vector3Tuple, target: THREE.Vector3Tuple, duration = 2.4, arc = true): Promise<void> {
   const cam = rig.camera, ctl = rig.controls
   if (!cam || !ctl) return Promise.resolve()
   killFlight()
   const from = cam.position.clone(), fromT = ctl.target.clone()
   const to = new THREE.Vector3(...pos), toT = new THREE.Vector3(...target)
   const dist = from.distanceTo(to)
-  const lift = Math.min(dist * 0.35, 600)
+  const lift = arc ? Math.min(dist * 0.35, 600) : 0
   const p = { t: 0 }
   return new Promise((resolve) => {
     tl = gsap.timeline({ onComplete: () => resolve() })

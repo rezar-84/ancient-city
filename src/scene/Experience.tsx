@@ -7,10 +7,12 @@ import { getTerrain, loadTerrain } from './terrainData'
 import { GradeAnimator, Terrain } from './Terrain'
 import { flyTo, orbitPose, rig } from './camera'
 import { City } from './City'
+import { CityGrid } from './CityGrid'
 import { Pins } from './Pins'
 import { TodayTiles } from './TodayTiles'
 import { PloutonionMist } from './Effects'
 import { PlanInk } from './PlanInk'
+import { Navigation } from './Navigation'
 import { installCapture } from './captureRenders'
 import { useApp } from '../store'
 import { useState } from 'react'
@@ -27,6 +29,7 @@ function World() {
     <>
       <Terrain data={data} />
       <City terrain={data} />
+      <CityGrid terrain={data} />
       <Pins terrain={data} />
       <PloutonionMist terrain={data} />
       <PlanInk terrain={data} />
@@ -125,6 +128,13 @@ function Controls() {
   const mode = useApp((s) => s.mode)
   useEffect(() => { rig.camera = camera; rig.controls = ref.current }, [camera])
   const plan = mode === 'plan'
+  // plan: drag pans the map, right-drag rotates (and tilts a little); 3D: drag orbits, right-drag pans
+  const mouseButtons = plan
+    ? { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE }
+    : { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN }
+  const touches = plan
+    ? { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_ROTATE }
+    : { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN }
   return (
     <OrbitControls
       ref={ref}
@@ -134,11 +144,15 @@ function Controls() {
       target={[150, 60, -150]}
       minDistance={25}
       maxDistance={3200}
-      maxPolarAngle={plan ? 0.02 : 1.38}
+      maxPolarAngle={plan ? 0.55 : 1.38}
       minPolarAngle={0}
-      enableRotate={!plan}
+      enableRotate
+      rotateSpeed={plan ? 0.6 : 0.8}
       screenSpacePanning={plan}
+      zoomToCursor
       zoomSpeed={0.9}
+      mouseButtons={mouseButtons}
+      touches={touches}
     />
   )
 }
@@ -167,6 +181,7 @@ export function Experience() {
       <GradeAnimator />
       <Controls />
       <IntroOrbit />
+      <Navigation />
       <ModeCamera />
       {showPerf && <Stats />}
     </Canvas>

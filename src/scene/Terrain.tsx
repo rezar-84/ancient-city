@@ -76,7 +76,7 @@ reflectedLight.indirectDiffuse = mix(reflectedLight.indirectDiffuse, diffuseColo
 
   return (
     <group>
-      <mesh geometry={geometry} material={material} receiveShadow />
+      <mesh name="terrain" geometry={geometry} material={material} receiveShadow />
       <mesh geometry={skirt}>
         <meshStandardMaterial vertexColors roughness={1} side={THREE.DoubleSide} />
       </mesh>

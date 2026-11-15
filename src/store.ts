@@ -16,6 +16,9 @@ interface State {
   tourPlaying: boolean
   arOpen: boolean
   showPerf: boolean
+  /** whole-city layer: street grid, houses, mapped ruins */
+  showGrid: boolean
+  setShowGrid: (v: boolean) => void
   tiles: 'off' | 'loading' | 'ready' | 'error'
   setTiles: (t: State['tiles']) => void
   setMode: (m: Mode) => void
@@ -46,6 +49,8 @@ export const useApp = create<State>((set) => ({
   tourPlaying: false,
   arOpen: false,
   showPerf: false,
+  showGrid: false,
+  setShowGrid: (showGrid) => set({ showGrid }),
   tiles: 'off',
   setTiles: (tiles) => set({ tiles }),
   setMode: (mode) => set({ mode, hovered: null }),

@@ -22,6 +22,7 @@ export function TopBar() {
   const mode = useApp((s) => s.mode)
   const era = useApp((s) => s.era)
   const [qr, setQr] = useState(false)
+  const showGrid = useApp((s) => s.showGrid)
   if (mode === 'intro') return null
   const set = useApp.getState()
   return (
@@ -38,6 +39,10 @@ export function TopBar() {
       </nav>
 
       <div className="pointer-events-auto flex items-center gap-2">
+        <button
+          className={'glass rounded-full px-3 py-1.5 text-xs ' + (showGrid ? 'bg-gold/80 text-ink' : 'btn-ghost')}
+          onClick={() => set.setShowGrid(!showGrid)} aria-pressed={showGrid} title={t('wholeCityTip')}
+        >⊞ {t('wholeCity')}</button>
         {mode !== 'plan' && (
           <div className="glass flex rounded-full p-1 text-xs">
             <button className={era === 'ancient' ? 'btn-active px-3 py-1' : 'btn-ghost px-3 py-1'} onClick={() => set.setEra('ancient')}>{t('ancient')}</button>
