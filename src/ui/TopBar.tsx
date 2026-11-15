@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import { useApp } from '../store'
 import { useT } from '../i18n'
-import { isAmbientEnabled, setAmbientEnabled } from './ambient'
+import { getAmbientVolume, isAmbientEnabled, onAmbientChange, setAmbientEnabled, setAmbientVolume } from './ambient'
 
 export function LangSwitch() {
   const lang = useApp((s) => s.lang)
@@ -22,7 +22,6 @@ export function TopBar() {
   const mode = useApp((s) => s.mode)
   const era = useApp((s) => s.era)
   const [qr, setQr] = useState(false)
-  const [sound, setSound] = useState(isAmbientEnabled())
   if (mode === 'intro') return null
   const set = useApp.getState()
   return (
@@ -46,7 +45,7 @@ export function TopBar() {
           </div>
         )}
         <LangSwitch />
-        <button className="glass btn-ghost" onClick={() => { setAmbientEnabled(!sound); setSound(!sound) }} title="Sound" aria-label="Sound">{sound ? '🔊' : '🔈'}</button>
+        <SoundMenu />
         <a className="glass btn-ghost hidden sm:inline-flex" href="#/guide" target="_blank" rel="noreferrer" title={t('guide')}>⎙</a>
         <button className="glass btn-ghost hidden sm:inline-flex" onClick={() => setQr((q) => !q)} title={t('scanToOpen')}>▦</button>
       </div>
@@ -59,5 +58,51 @@ export function TopBar() {
         </div>
       )}
     </header>
+  )
+}
+
+/** Ambient-sound control: on/off switch and volume, remembered per browser. */
+export function SoundMenu() {
+  const t = useT()
+  const [open, setOpen] = useState(false)
+  const [, force] = useState(0)
+  useEffect(() => onAmbientChange(() => force((n) => n + 1)), [])
+  const on = isAmbientEnabled()
+  const vol = getAmbientVolume()
+  const muted = !on || vol === 0
+  return (
+    <div className="relative">
+      <button
+        className="glass btn-ghost flex items-center gap-1.5"
+        onClick={() => setOpen((o) => !o)}
+        title={t('sound')} aria-label={t('sound')} aria-expanded={open}
+      >
+        <span aria-hidden>{muted ? '🔇' : '🔊'}</span>
+        <span className="hidden text-xs sm:inline">{t('sound')}</span>
+      </button>
+      {open && (
+        <div className="glass absolute right-0 top-12 z-40 w-64 rounded-2xl p-4 text-sm">
+          <label className="flex cursor-pointer items-center justify-between gap-3">
+            <span>{t('ambience')}</span>
+            <button
+              role="switch" aria-checked={on}
+              onClick={() => setAmbientEnabled(!on)}
+              className={`relative h-6 w-11 rounded-full transition-colors ${on ? 'bg-amber-500' : 'bg-white/20'}`}
+            >
+              <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${on ? 'left-[22px]' : 'left-0.5'}`} />
+            </button>
+          </label>
+          <label className={`mt-3 block ${on ? '' : 'opacity-40'}`}>
+            <span className="mb-1 flex justify-between text-xs text-travertine/70"><span>{t('volume')}</span><span>{Math.round(vol * 100)}%</span></span>
+            <input
+              type="range" min={0} max={100} step={5} value={Math.round(vol * 100)} disabled={!on}
+              onChange={(e) => setAmbientVolume(Number(e.target.value) / 100)}
+              className="w-full accent-amber-500"
+            />
+          </label>
+          <p className="mt-3 text-[11px] leading-snug text-travertine/50">{t('soundNote')}</p>
+        </div>
+      )}
+    </div>
   )
 }

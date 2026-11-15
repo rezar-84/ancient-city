@@ -1,6 +1,6 @@
 import { useApp } from '../store'
 import { useT } from '../i18n'
-import { LangSwitch } from './TopBar'
+import { LangSwitch, SoundMenu } from './TopBar'
 import { startAmbient } from './ambient'
 import { goToViewpoint } from './Viewpoints'
 
@@ -17,7 +17,7 @@ export function Intro() {
       style={{ background: 'radial-gradient(ellipse at 50% 30%, transparent 30%, rgba(20,14,9,.75) 100%)' }}
       aria-hidden={hidden}
     >
-      <div className="absolute right-5 top-5 pointer-events-auto">{!hidden && <LangSwitch />}</div>
+      <div className="absolute right-5 top-5 pointer-events-auto flex items-center gap-2">{!hidden && <><SoundMenu /><LangSwitch /></>}</div>
       <p className="mb-3 font-sans text-xs uppercase tracking-[0.35em] text-gold">{t('tagline')}</p>
       <h1 className="font-display text-6xl font-bold tracking-[0.12em] text-travertine drop-shadow-[0_4px_30px_rgba(0,0,0,.6)] sm:text-8xl">
         {t('title').toUpperCase()}
