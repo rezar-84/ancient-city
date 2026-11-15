@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import { useApp } from '../store'
 import { useT } from '../i18n'
-import { getAmbientVolume, getPlaceSounds, getUiSounds, isAmbientEnabled, onAmbientChange, setAmbientEnabled, setAmbientVolume, setPlaceSounds, setUiSounds } from './ambient'
+import { getVolume, onAmbientChange, setVolume } from './ambient'
+import type { Layer } from '../audio/engine'
 
 export function LangSwitch() {
   const lang = useApp((s) => s.lang)
@@ -66,15 +67,24 @@ export function TopBar() {
   )
 }
 
-/** Ambient-sound control: on/off switch and volume, remembered per browser. */
+/** Sound mixer: master plus one volume per layer, remembered per browser. */
+const MIX: Array<Layer | 'master'> = ['master', 'music', 'ambience', 'places', 'voices', 'ui']
+const MIX_LABEL: Record<Layer | 'master', { en: string; tr: string; icon: string }> = {
+  master: { en: 'Master', tr: 'Ana ses', icon: '◉' },
+  music: { en: 'Music', tr: 'Müzik', icon: '♪' },
+  ambience: { en: 'Ambience', tr: 'Ortam', icon: '≈' },
+  places: { en: 'Places', tr: 'Mekânlar', icon: '⌂' },
+  voices: { en: 'Ancient voices', tr: 'Antik sesler', icon: '❝' },
+  ui: { en: 'Interface', tr: 'Arayüz', icon: '•' },
+}
+
 export function SoundMenu() {
   const t = useT()
+  const lang = useApp((s) => s.lang)
   const [open, setOpen] = useState(false)
   const [, force] = useState(0)
   useEffect(() => onAmbientChange(() => force((n) => n + 1)), [])
-  const on = isAmbientEnabled()
-  const vol = getAmbientVolume()
-  const muted = vol === 0 || (!on && !getPlaceSounds())
+  const muted = getVolume('master') === 0
   return (
     <div className="relative">
       <button
@@ -86,36 +96,30 @@ export function SoundMenu() {
         <span className="hidden text-xs sm:inline">{t('sound')}</span>
       </button>
       {open && (
-        <div className="glass absolute right-0 top-12 z-40 w-64 rounded-2xl p-4 text-sm">
-          <Toggle label={t('ambience')} on={on} set={setAmbientEnabled} />
-          <Toggle label={t('placeSounds')} on={getPlaceSounds()} set={setPlaceSounds} />
-          <Toggle label={t('uiSounds')} on={getUiSounds()} set={setUiSounds} />
-          <label className="mt-3 block">
-            <span className="mb-1 flex justify-between text-xs text-travertine/70"><span>{t('volume')}</span><span>{Math.round(vol * 100)}%</span></span>
-            <input
-              type="range" min={0} max={100} step={5} value={Math.round(vol * 100)}
-              onChange={(e) => setAmbientVolume(Number(e.target.value) / 100)}
-              className="w-full accent-amber-500"
-            />
-          </label>
+        <div className="glass absolute right-0 top-12 z-40 w-72 rounded-2xl p-4 text-sm">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="font-display tracking-[0.15em] text-gold">{t('sound').toUpperCase()}</span>
+            <button className="btn-ghost px-2 py-0.5 text-xs" onClick={() => setVolume('master', muted ? 0.7 : 0)}>{muted ? (lang === 'en' ? 'Unmute' : 'Sesi aç') : (lang === 'en' ? 'Mute all' : 'Tümünü kapat')}</button>
+          </div>
+          {MIX.map((k) => {
+            const v = getVolume(k)
+            return (
+              <label key={k} className={'mt-2 block ' + (k === 'master' ? 'border-b border-white/10 pb-2' : '')}>
+                <span className="mb-0.5 flex justify-between text-xs text-travertine/80">
+                  <span><span className="mr-1.5 inline-block w-3 text-center text-gold" aria-hidden>{MIX_LABEL[k].icon}</span>{MIX_LABEL[k][lang]}</span>
+                  <span className="tabular-nums text-travertine/50">{Math.round(v * 100)}%</span>
+                </span>
+                <input
+                  type="range" min={0} max={100} step={5} value={Math.round(v * 100)}
+                  onChange={(e) => setVolume(k, Number(e.target.value) / 100)}
+                  className="w-full accent-amber-500" aria-label={MIX_LABEL[k][lang]}
+                />
+              </label>
+            )
+          })}
           <p className="mt-3 text-[11px] leading-snug text-travertine/50">{t('soundNote')}</p>
         </div>
       )}
-    </div>
-  )
-}
-
-function Toggle({ label, on, set }: { label: string; on: boolean; set: (v: boolean) => void }) {
-  return (
-    <div className="flex items-center justify-between gap-3 py-1">
-      <span>{label}</span>
-      <button
-        role="switch" aria-checked={on} aria-label={label}
-        onClick={() => set(!on)}
-        className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${on ? 'bg-amber-500' : 'bg-white/20'}`}
-      >
-        <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${on ? 'left-[22px]' : 'left-0.5'}`} />
-      </button>
     </div>
   )
 }

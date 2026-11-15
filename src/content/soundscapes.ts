@@ -27,6 +27,10 @@ export const BEDS: Bed[] = [
   { id: 'latrine', seconds: 18, loop: true, prompt: 'Roman public latrine, water flowing through a stone channel, people chatting casually, stone room echo' },
   { id: 'ui-click', seconds: 0.6, loop: false, prompt: 'single soft short click of a small stone tapping on marble, subtle user interface sound' },
   { id: 'whoosh', seconds: 1.6, loop: false, prompt: 'soft gentle wind whoosh, airy camera movement, subtle and smooth' },
+  { id: 'drum', seconds: 3, loop: false, prompt: 'single deep cinematic frame drum and taiko hit with a long dark reverb tail and a low brass swell, epic and dramatic, for an ancient historical game menu transition' },
+  { id: 'shimmer', seconds: 2.5, loop: false, prompt: 'magical time-shift shimmer: rising airy chimes and a soft reversed cymbal swell, then a gentle sparkle, as if travelling through time' },
+  { id: 'open', seconds: 1.2, loop: false, prompt: 'old parchment scroll being unrolled quickly, soft paper rustle, subtle' },
+  { id: 'hover', seconds: 0.5, loop: false, prompt: 'very soft short wooden tick, tiny subtle interface hover sound' },
 ]
 
 export const VOICES: VoiceLine[] = [

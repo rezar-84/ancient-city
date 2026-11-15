@@ -4,12 +4,13 @@ import { LANDMARKS } from '../content/landmarks'
 import { LANG_LABEL, PLACE_SOUND, langForYear, type VoiceLine } from '../content/soundscapes'
 import { getTerrain } from '../scene/terrainData'
 import { rig, flightListeners } from '../scene/camera'
-import { ensureAudio, onVoice, playUi, playVoice, setBedLevels, stopVoice } from './engine'
+import { ensureAudio, onVoice, playUi, playVoice, setBedLevels, setMusic, stopVoice } from './engine'
 import { GRID } from '../content/grid'
 
 const smooth = (a: number, b: number, x: number) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t) }
 /** beds that also exist in today's landscape (nature), the rest are the ancient city */
 const NATURE = new Set(['spring', 'necropolis'])
+const CHRISTIAN = new Set(['martyrium', 'philip-church', 'cathedral'])
 
 /** Drives the place soundscape from camera position, selection, mode and era. No DOM output except
  *  the caption shown while an ancient voice plays. */
@@ -69,6 +70,33 @@ export function PlaceAudio() {
     }, 120)
     return () => window.clearInterval(id)
   }, [])
+
+  // score: dramatic theme on the title and tour, exploration score otherwise, cues per place/era
+  const era = useApp((s) => s.era)
+  const year = useApp((s) => s.year)
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const s = useApp.getState()
+      let track: string | null = 'explore'
+      if (s.mode === 'intro' || s.mode === 'tour') track = 'theme'
+      else if (s.selected === 'ploutonion') track = 'tension'
+      else if (s.selected && CHRISTIAN.has(s.selected)) track = 'byzantine'
+      else if (s.mode === 'plan' && s.year >= 330) track = 'byzantine'
+      setMusic(track)
+    }, 400)
+    return () => window.clearInterval(id)
+  }, [])
+
+  // event sounds
+  const showGrid = useApp((s) => s.showGrid)
+  const hovered = useApp((s) => s.hovered)
+  const first = useRef(true)
+  useEffect(() => { if (!first.current) playUi('drum', 0.9) }, [mode])
+  useEffect(() => { if (!first.current) playUi('shimmer', 0.8) }, [era, showGrid])
+  useEffect(() => { if (!first.current && selected) playUi('open', 0.8) }, [selected])
+  useEffect(() => { if (!first.current && hovered) playUi('hover', 0.7) }, [hovered])
+  useEffect(() => { if (!first.current && mode === 'plan') playUi('hover', 0.4) }, [year, mode])
+  useEffect(() => { first.current = false }, [])
 
   // ancient voice when a place is selected (not during the narrated tour)
   useEffect(() => {

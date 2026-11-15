@@ -1,52 +1,44 @@
-/** Sound settings hub: the looping ambient soundscape (HTMLAudio) plus the Web Audio place engine.
- *  On/off switches and volume are remembered per browser. Starts on the first user gesture. */
-import { applySettings, duckPlaces, ensureAudio, settings, stopVoice } from '../audio/engine'
+/** Sound settings hub: per-layer volumes (persisted per browser), the general ambience loop, and
+ *  narration ducking. Starts on the first user gesture. */
+import { LAYERS, applySettings, duckLayers, ensureAudio, layerInput, settings, stopVoice, type Layer } from '../audio/engine'
 
-const KEY = 'hierapolis.ambient'
+const KEY = 'hierapolis.sound.v2'
 
 let el: HTMLAudioElement | null = null
-let enabled = true
-let ducked = false
 let started = false
 const listeners = new Set<() => void>()
 
 try {
-  const saved = JSON.parse(localStorage.getItem(KEY) ?? 'null') as { enabled?: boolean; volume?: number; places?: boolean; ui?: boolean } | null
-  if (saved) {
-    if (typeof saved.enabled === 'boolean') enabled = saved.enabled
-    if (typeof saved.volume === 'number') settings.volume = Math.min(1, Math.max(0, saved.volume))
-    if (typeof saved.places === 'boolean') settings.places = saved.places
-    if (typeof saved.ui === 'boolean') settings.ui = saved.ui
-  }
+  const saved = JSON.parse(localStorage.getItem(KEY) ?? 'null') as Partial<typeof settings> | null
+  if (saved) for (const k of ['master', ...LAYERS] as const) if (typeof saved[k] === 'number') settings[k] = Math.min(1, Math.max(0, saved[k]!))
 } catch { /* storage unavailable */ }
 
 function persist() {
-  try { localStorage.setItem(KEY, JSON.stringify({ enabled, volume: settings.volume, places: settings.places, ui: settings.ui })) } catch { /* ignore */ }
+  try { localStorage.setItem(KEY, JSON.stringify(settings)) } catch { /* ignore */ }
   applySettings()
   listeners.forEach((l) => l())
 }
 
-function apply() {
-  if (!el) return
-  el.volume = Math.min(1, settings.volume * 0.7 * (ducked ? 0.25 : 1))
-  if (enabled && started && settings.volume > 0) void el.play().catch(() => undefined)
-  else el.pause()
-}
-
 export function startAmbient() {
   started = true
-  ensureAudio()
-  if (!el) { el = new Audio('/audio/ambient.mp3'); el.loop = true }
-  apply()
+  const c = ensureAudio()
+  if (!el) {
+    el = new Audio('/audio/ambient.mp3'); el.loop = true
+    const input = layerInput('ambience')
+    if (c && input) c.createMediaElementSource(el).connect(input)
+  }
+  void el.play().catch(() => undefined)
 }
-export function setAmbientEnabled(on: boolean) { enabled = on; if (on && started) startAmbient(); else apply(); persist() }
-export function setAmbientVolume(v: number) { settings.volume = Math.min(1, Math.max(0, v)); if (started) startAmbient(); else apply(); persist() }
-export function setPlaceSounds(on: boolean) { settings.places = on; if (!on) stopVoice(); persist() }
-export function setUiSounds(on: boolean) { settings.ui = on; persist() }
-export function isAmbientEnabled() { return enabled }
-export function getAmbientVolume() { return settings.volume }
-export function getPlaceSounds() { return settings.places }
-export function getUiSounds() { return settings.ui }
-/** Narration playing: duck ambience, place beds and voices. */
-export function duckAmbient(d: boolean) { ducked = d; apply(); duckPlaces(d); if (d) stopVoice() }
+
+export function setVolume(layer: Layer | 'master', v: number) {
+  settings[layer] = Math.min(1, Math.max(0, v))
+  if (layer === 'voices' && v <= 0) stopVoice()
+  if (started) startAmbient()
+  persist()
+}
+export function getVolume(layer: Layer | 'master') { return settings[layer] }
+export function muteAll(m: boolean) { setVolume('master', m ? 0 : 0.7) }
+
+/** Narration playing: duck music, ambience, places and voices. */
+export function duckAmbient(d: boolean) { duckLayers(d); if (d) stopVoice() }
 export function onAmbientChange(fn: () => void) { listeners.add(fn); return () => { listeners.delete(fn) } }
