@@ -206,7 +206,7 @@ export default function PrintGuide() {
                 <h3 className="mt-3 font-display text-[11pt] text-terracotta">{tr(lang, 'Key facts', 'Önemli bilgiler')}</h3>
                 <ul className="mt-1 text-[9.5pt] leading-snug">{l.facts[lang].map((f, k) => <li key={k} className="mb-0.5">◆ {f}</li>)}</ul>
                 {l.didYouKnow && <p className="mt-2.5 text-[9.5pt] italic"><b>{t('didYouKnow')}</b> {l.didYouKnow[lang]}</p>}
-                {l.disputed && <p className="mt-2.5 rounded border-l-2 border-terracotta bg-parchment/50 px-2 py-1 text-[9pt]"><b>⚑ {tr(lang, 'Debated by scholars', 'Akademisyenlerce tartışmalı')}:</b> {l.disputed[lang]}</p>}
+                {l.disputed && <p className="mt-2.5 rounded border border-terracotta/25 bg-parchment/40 px-2 py-1 text-[9pt]"><b>⚑ {tr(lang, 'Debated by scholars', 'Akademisyenlerce tartışmalı')}:</b> {l.disputed[lang]}</p>}
                 {v && (
                   <div className="mt-2.5 text-[9pt]">
                     <b>{tr(lang, 'Ancient voice', 'Antik ses')} · {LANG_LABEL[v.lang][lang]}</b>

@@ -49,12 +49,12 @@ export function PlanOverlay() {
       </div>
 
       {HISTORIC_MAPS.length > 0 && (
-        <button className="glass btn-ghost absolute left-4 top-20 z-10 md:left-72" onClick={() => setMaps(true)}>🗺 {t('historicMaps')} · {HISTORIC_MAPS.length}</button>
+        <button className="glass btn-ghost absolute left-2.5 top-14 z-10 text-xs sm:left-4 sm:top-20 sm:text-sm md:left-72" onClick={() => setMaps(true)}>🗺 {t('historicMaps')} · {HISTORIC_MAPS.length}</button>
       )}
       {maps && <Lightbox items={HISTORIC_MAPS} index={0} onClose={() => setMaps(false)} />}
 
       {/* timeline */}
-      <div className={'glass absolute inset-x-3 bottom-3 z-10 mx-auto max-w-4xl rounded-2xl px-5 py-3 sm:bottom-5 ' + (selected ? 'sm:left-6 sm:right-[460px]' : 'sm:inset-x-6')}>
+      <div className={'glass absolute inset-x-2.5 bottom-[calc(max(0.625rem,env(safe-area-inset-bottom))+64px)] z-10 mx-auto max-w-4xl rounded-2xl px-4 py-2.5 sm:inset-x-3 sm:bottom-5 sm:px-5 sm:py-3 ' + (selected ? 'sm:left-6 sm:right-[460px]' : 'sm:inset-x-6')}>
         <div className="flex items-baseline justify-between gap-4">
           <div>
             <span className="font-display text-2xl text-gold">{formatYear(year, lang)}</span>

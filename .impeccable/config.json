@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "inter",
+        "createdAt": "2026-11-15T23:15:20.213Z",
+        "reason": "Claude: Inter is the project's established sans (tailwind.config fontFamily.sans) used across the app UI; the print footer matches it for consistency"
+      }
+    ]
+  }
+}

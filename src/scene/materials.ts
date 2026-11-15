@@ -70,7 +70,16 @@ export function matrix(p: Placement) {
     new THREE.Vector3(p.sx ?? 1, p.sy ?? 1, p.sz ?? 1));
 }
 function paint(g: THREE.BufferGeometry, tint: number) {
-  g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(g.getAttribute('position').count * 3).fill(tint), 3));
+  const n = g.getAttribute('position').count;
+  g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n * 3).fill(tint), 3));
+  if (!g.getAttribute('aFlute')) flute(g, false);
+}
+/** aFlute marks fluted column shafts for the procedural stone shader: 0 = plain, 1 + u = angle round the shaft (0..1). */
+function flute(g: THREE.BufferGeometry, on: boolean) {
+  const n = g.getAttribute('position').count, a = new Float32Array(n), uv = g.getAttribute('uv');
+  if (on && uv) for (let i = 0; i < n; i++) a[i] = 1 + uv.getX(i);
+  g.setAttribute('aFlute', new THREE.BufferAttribute(a, 1));
+  return g;
 }
 export function combine(parts: THREE.BufferGeometry[]) {
   const normalized = parts.map(g => g.index ? g.toNonIndexed() : g);
@@ -80,11 +89,17 @@ export function combine(parts: THREE.BufferGeometry[]) {
   result.setIndex(Array.from({ length: result.getAttribute('position').count }, (_, i) => i));
   return result;
 }
+/** Column with square plinth, torus base, fluted shaft (entasis taper), echinus and abacus; total height = height. */
 export function column(height = 6, radius = 0.35) {
+  const seg = 12, r = radius, plinth = 0.22, torus = 0.2, echinus = 0.26, abacus = 0.2;
+  const shaft = Math.max(0.5, height - plinth - torus - echinus - abacus);
+  const y1 = plinth + torus, y2 = y1 + shaft;
   return combine([
-    new THREE.CylinderGeometry(radius * 0.85, radius, height - 0.5, 8).translate(0, height / 2, 0),
-    new THREE.BoxGeometry(radius * 2.8, 0.25, radius * 2.8).translate(0, 0.125, 0),
-    new THREE.BoxGeometry(radius * 2.8, 0.25, radius * 2.8).translate(0, height - 0.125, 0),
+    flute(new THREE.BoxGeometry(r * 2.7, plinth, r * 2.7).translate(0, plinth / 2, 0), false),
+    flute(new THREE.CylinderGeometry(r * 1.12, r * 1.28, torus, 8, 1, true).translate(0, plinth + torus / 2, 0), false),
+    flute(new THREE.CylinderGeometry(r * 0.86, r, shaft, seg, 1, true).translate(0, y1 + shaft / 2, 0), true),
+    flute(new THREE.CylinderGeometry(r * 1.3, r * 0.88, echinus, 8, 1, true).translate(0, y2 + echinus / 2, 0), false),
+    flute(new THREE.BoxGeometry(r * 2.8, abacus, r * 2.8).translate(0, height - abacus / 2, 0), false),
   ]);
 }
 /** Open arch, ten intrados segments. Height is the total clear height. */

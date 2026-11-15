@@ -14,6 +14,9 @@ export function createFrontinusGate(o: FrontinusGateOptions = {}): THREE.Group {
     const x = side * (total / 2 + td / 2 - 0.3);
     b.add('limestone', new THREE.CylinderGeometry(td / 2, td / 2, th + 3, 16), { x, y: (th - 3) / 2, z: 0 });
     b.add('travertine', new THREE.CylinderGeometry(td / 2 + 0.2, td / 2 + 0.2, 0.5, 16), { x, y: th - 0.25, z: 0 });
+    // string course and battered plinth: break up the plain drum
+    b.add('travertine', new THREE.CylinderGeometry(td / 2 + 0.12, td / 2 + 0.12, 0.35, 16, 1, true), { x, y: h + 0.4, z: 0 });
+    b.add('travertine', new THREE.CylinderGeometry(td / 2 + 0.1, td / 2 + 0.35, 1.2, 16, 1, true), { x, y: 0.6, z: 0 });
   }
   return b.finish();
 }

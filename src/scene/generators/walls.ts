@@ -14,7 +14,7 @@ export function createWall(points: Array<[number, number]>, o: WallOptions = {})
   const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cz = (Math.min(...zs) + Math.max(...zs)) / 2;
   b.group.userData.origin = { x: cx, z: cz };
   let distance = 0, nextTower = 0;
-  const towers: Placement[] = [], caps: Placement[] = [];
+  const towers: Placement[] = [], caps: Placement[] = [], merlons: Placement[] = [];
   for (let i = 1; i < points.length; i++) {
     const [ax, az] = points[i - 1], [bx, bz] = points[i], dx = bx - ax, dz = bz - az;
     const length = Math.hypot(dx, dz); if (!length) continue;
@@ -26,6 +26,12 @@ export function createWall(points: Array<[number, number]>, o: WallOptions = {})
       const low = Math.min(y0, y1), high = Math.max(y0, y1);
       b.box('limestone', t, h + 3 + high - low, length / count + 0.04, x - cx, (low + high + h - 3) / 2, z - cz, angle);
       b.box('travertine', t + 0.2, 0.35, length / count + 0.05, x - cx, high + h, z - cz, angle);
+      // crenellated parapet on the outer edge: one merlon every ~2.6 m
+      const seg = length / count, nm = Math.max(1, Math.round(seg / 2.6));
+      for (let k = 0; k < nm; k++) {
+        const f = (j + (k + 0.5) / nm) / count, mx = ax + dx * f, mz = az + dz * f, off = t / 2 - 0.3;
+        merlons.push({ x: mx - cx + off * Math.cos(angle), y: high + h + 0.175 + 0.65, z: mz - cz - off * Math.sin(angle), ry: angle });
+      }
     }
     while (nextTower <= distance + length) {
       const f = (nextTower - distance) / length;
@@ -38,5 +44,6 @@ export function createWall(points: Array<[number, number]>, o: WallOptions = {})
   }
   b.repeated('limestone', new THREE.BoxGeometry(tw, th + 3, tw), towers);
   b.repeated('travertine', new THREE.BoxGeometry(tw + 0.4, 0.5, tw + 0.4), caps);
+  if (merlons.length) b.repeated('limestone', new THREE.BoxGeometry(0.6, 1.3, 1.4), merlons);
   return b.finish();
 }

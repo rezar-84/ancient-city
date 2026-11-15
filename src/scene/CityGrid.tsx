@@ -44,9 +44,33 @@ function unitGable() {
   return ng
 }
 
+/** unit hipped roof: 1 x 1 base on y=0, ridge 1 high along z between z = ±0.22 */
+function unitHip() {
+  const p = [[-0.5, 0, -0.5], [0.5, 0, -0.5], [0.5, 0, 0.5], [-0.5, 0, 0.5], [0, 1, -0.22], [0, 1, 0.22]]
+  const tri = [[0, 4, 1], [2, 5, 3], [1, 4, 5], [1, 5, 2], [3, 5, 4], [3, 4, 0]]
+  const pos: number[] = []
+  for (const t of tri) for (const i of t) pos.push(...p[i])
+  const g = new THREE.BufferGeometry()
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals()
+  g.setAttribute('color', new THREE.Float32BufferAttribute(new Array(pos.length).fill(1), 3))
+  return g
+}
+/** unit lean-to (shed) roof: high (1) at x = -0.5, eaves (0) at x = +0.5, so it drains toward +x */
+function unitShed() {
+  const s = new THREE.Shape([new THREE.Vector2(-0.5, 0), new THREE.Vector2(0.5, 0), new THREE.Vector2(-0.5, 1)])
+  const g = new THREE.ExtrudeGeometry(s, { depth: 1, bevelEnabled: false }).translate(0, 0, -0.5)
+  const ng = g.toNonIndexed(); ng.computeVertexNormals()
+  ng.setAttribute('color', new THREE.Float32BufferAttribute(new Array(ng.attributes.position.count * 3).fill(1), 3))
+  return ng
+}
+
+type RoofKind = 'gable' | 'hip' | 'shed'
+
 interface Built {
   walls: THREE.InstancedMesh
-  roofs: THREE.InstancedMesh
+  roofs: THREE.InstancedMesh[]
+  courts: THREE.InstancedMesh
+  piers: THREE.InstancedMesh
   streets: THREE.Mesh
   ruins: THREE.Mesh | null
   stats: { insulae: number; houses: number; streetKm: number }
@@ -82,25 +106,35 @@ function buildCity(t: Terrain): Built {
   }
 
   const rand = rng(1957) // year the Italian mission began excavating
-  const wallM: THREE.Matrix4[] = [], roofM: THREE.Matrix4[] = []
+  const wallM: THREE.Matrix4[] = [], courtM: THREE.Matrix4[] = [], pierM: THREE.Matrix4[] = []
+  const roofM: Record<RoofKind, THREE.Matrix4[]> = { gable: [], hip: [], shed: [] }
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), yAxis = new THREE.Vector3(0, 1, 0)
-  const yaw = Math.atan2(u[0], u[1]) // rotation that maps local +z onto u
+  const yaw = Math.atan2(u[0], u[1]) // rotation that maps local +z onto u (and local +x onto v)
   q.setFromAxisAngle(yAxis, yaw)
-  const push = (arr: THREE.Matrix4[], cx: number, cz: number, y: number, sx: number, sy: number, sz: number) => {
-    arr.push(m4.clone().compose(new THREE.Vector3(cx, y, cz), q, new THREE.Vector3(sx, sy, sz)))
+  const qTurn = (a: number) => q.clone().multiply(new THREE.Quaternion().setFromAxisAngle(yAxis, a))
+  const push = (arr: THREE.Matrix4[], cx: number, cz: number, y: number, sx: number, sy: number, sz: number, rq = q) => {
+    arr.push(m4.clone().compose(new THREE.Vector3(cx, y, cz), rq, new THREE.Vector3(sx, sy, sz)))
   }
-  /** a box aligned to the grid, given in (pu, pv) lot coordinates, with a gable roof on top */
-  const wing = (cu: number, cv: number, lu: number, lv: number, h: number, base: number, roof: boolean) => {
+  let pitch = 0.3
+  /** a box aligned to the grid, given in (pu, pv) lot coordinates, with a roof on top.
+   * shed roofs drain toward `drain` (one of +u, -u, +v, -v): the courtyard of a peristyle house. */
+  const wing = (cu: number, cv: number, lu: number, lv: number, h: number, base: number, roof: RoofKind | null, drain?: 'u+' | 'u-' | 'v+' | 'v-') => {
     const [x, z] = P(cu, cv)
     // grid-aligned: local z along u (length lu), local x along v (width lv)
     const sink = 1.5
     push(wallM, x, z, base - sink, lv, h + sink, lu)
-    if (roof) {
-      const ridgeAlongU = lu >= lv
-      const w = ridgeAlongU ? lv : lu, len = ridgeAlongU ? lu : lv
-      const rq = ridgeAlongU ? q : q.clone().multiply(new THREE.Quaternion().setFromAxisAngle(yAxis, Math.PI / 2))
-      roofM.push(m4.clone().compose(new THREE.Vector3(x, base + h, z), rq, new THREE.Vector3(w + 0.8, Math.min(2.4, w * 0.32), len + 0.6)))
+    if (!roof) return
+    const top = base + h
+    if (roof === 'shed' && drain) {
+      // rotate the unit shed so its +x (eaves side) points to the drain direction
+      const a = drain === 'v+' ? 0 : drain === 'v-' ? Math.PI : drain === 'u+' ? -Math.PI / 2 : Math.PI / 2
+      const across = drain[0] === 'v' ? lv : lu, len = drain[0] === 'v' ? lu : lv
+      push(roofM.shed, x, z, top, across + 0.7, Math.min(1.9, across * pitch * 0.8), len + 0.5, qTurn(a))
+      return
     }
+    const ridgeAlongU = lu >= lv
+    const w = ridgeAlongU ? lv : lu, len = ridgeAlongU ? lu : lv
+    push(roofM[roof === 'shed' ? 'gable' : roof], x, z, top, w + 0.8, Math.min(2.6, w * pitch), len + 0.6, ridgeAlongU ? q : qTurn(Math.PI / 2))
   }
 
   let insulae = 0, houses = 0
@@ -139,22 +173,45 @@ function buildCity(t: Terrain): Built {
           const base = Math.min(...corners.map(([x, z]) => t.heightAt(x, z)))
           const iu = du - 1.2, iv = dv - 1.2
           const h = 4.2 + rand() * 2.2 + (rand() < 0.25 ? 3 : 0)
+          pitch = 0.24 + rand() * 0.12 // roof pitch varies house to house
           houses++
           if (j === 0 && m === 0) {
-            // tabernae: a row of shops opening onto the colonnaded main street
-            wing(cu, side * (v0 + 3.5), iu, 6.5, 4.4, base, true)
-            wing(cu, side * (v0 + 6.5 + (iv - 6.5) / 2 + 0.3), iu * 0.9, iv - 7.5, h, base, true)
+            // tabernae: a row of shops opening onto the colonnaded main street, lean-to roofs draining to the street
+            wing(cu, side * (v0 + 3.5), iu, 6.5, 4.4, base, 'shed', side > 0 ? 'v-' : 'v+')
+            wing(cu, side * (v0 + 6.5 + (iv - 6.5) / 2 + 0.3), iu * 0.9, iv - 7.5, h, base, rand() < 0.5 ? 'hip' : 'gable')
           } else if (r < 0.75) {
-            // peristyle / courtyard house: four wings round an open court
+            // peristyle / courtyard house: four wings round an open court; roofs either drain into the court
+            // (compluviate lean-tos) or are plain gables; a paved court with a portico of piers on the long sides
             const d = 4.5 + rand() * 1.2
             const vv = cv
-            wing(cu - iu / 2 + d / 2, vv, d, iv, h, base, true)
-            wing(cu + iu / 2 - d / 2, vv, d, iv, h * 0.85, base, true)
-            wing(cu, vv - (iv / 2 - d / 2), iu - 2 * d, d, h * 0.8, base, true)
-            wing(cu, vv + (iv / 2 - d / 2), iu - 2 * d, d, h * 0.8, base, true)
+            const inward = rand() < 0.6
+            const k: RoofKind = inward ? 'shed' : 'gable'
+            const hi = rand() < 0.3 ? 2.6 : 0 // a two-storey main wing
+            wing(cu - iu / 2 + d / 2, vv, d, iv, h + hi, base, k, 'u+')
+            wing(cu + iu / 2 - d / 2, vv, d, iv, h * 0.85, base, k, 'u-')
+            wing(cu, vv - (iv / 2 - d / 2), iu - 2 * d, d, h * 0.8, base, k, 'v+')
+            wing(cu, vv + (iv / 2 - d / 2), iu - 2 * d, d, h * 0.8, base, k, 'v-')
+            const cuL = iu - 2 * d, cvL = iv - 2 * d
+            if (cuL > 3 && cvL > 3) {
+              const [x, z] = P(cu, vv)
+              push(courtM, x, z, base - 0.6, cvL, 0.75, cuL)
+              // piers along the two long sides of the court, 0.9 m in front of the wing walls
+              const ph = h * 0.8 - 0.4, n = Math.max(2, Math.round((cvL - 1) / 3))
+              for (const sgn of [-1, 1]) for (let s2 = 0; s2 < n; s2++) {
+                const pv = vv - cvL / 2 + 0.6 + (s2 + 0.5) * (cvL - 1.2) / n
+                const [px, pz] = P(cu + sgn * (cuL / 2 - 0.9), pv)
+                push(pierM, px, pz, base, 0.42, ph, 0.42)
+              }
+            }
           } else {
-            // block house with a small yard
-            wing(cu, cv - side * dv * 0.12, iu * (0.8 + rand() * 0.15), iv * 0.7, h, base, true)
+            // block house with a yard; often an L with a lower annex under a lean-to
+            const bw = iu * (0.8 + rand() * 0.15), bv = iv * 0.7
+            const bc = cv - side * dv * 0.12
+            wing(cu, bc, bw, bv, h, base, rand() < 0.55 ? 'hip' : 'gable')
+            if (rand() < 0.5) {
+              const sideU = rand() < 0.5 ? -1 : 1
+              wing(cu + sideU * (bw / 2 - 2.2), bc + side * (bv / 2 + 2.4), 4.4, 4.8, h * 0.62, base, 'shed', side > 0 ? 'v+' : 'v-')
+            }
           }
         }
         if (any) insulae++
@@ -162,23 +219,36 @@ function buildCity(t: Terrain): Built {
     }
   }
 
-  // street ribbons draped on the terrain
-  const pos: number[] = [], idx: number[] = []
+  // street ribbons draped on the terrain. Plateiai get raised kerbs and gutters; stenopoi are plain lanes.
+  const pos: number[] = [], col: number[] = [], idx: number[] = []
   let streetLen = 0
+  const KERB = 0.2, KW = 0.55
   for (const { a, b, w } of streetSegs.values()) {
     const len = Math.hypot(b[0] - a[0], b[1] - a[1]); streetLen += len
     const n = Math.max(1, Math.ceil(len / 5))
-    const dx = (b[0] - a[0]) / len, dz = (b[1] - a[1]) / len, px = -dz * w / 2, pz = dx * w / 2
-    const start = pos.length / 3
-    for (let s = 0; s <= n; s++) {
-      const x = a[0] + (b[0] - a[0]) * (s / n), z = a[1] + (b[1] - a[1]) * (s / n)
-      pos.push(x + px, t.heightAt(x + px, z + pz) + 0.25, z + pz, x - px, t.heightAt(x - px, z - pz) + 0.25, z - pz)
-      if (s > 0) { const o = start + (s - 1) * 2; idx.push(o, o + 1, o + 2, o + 1, o + 3, o + 2) }
+    const dx = (b[0] - a[0]) / len, dz = (b[1] - a[1]) / len, nx = -dz, nz = dx
+    // cross profile: [offset across, lift, shade]; consecutive pairs become strips with their own vertices
+    const h2 = w / 2
+    const prof: [number, number, number][] = w >= 4
+      ? [[-h2, KERB, 1.1], [-h2 + KW, KERB, 1.06], [-h2 + KW, 0, 0.78], [-h2 + KW + 0.35, 0, 0.9], [h2 - KW - 0.35, 0, 1.0], [h2 - KW, 0, 0.78], [h2 - KW, KERB, 1.06], [h2, KERB, 1.1]]
+      : [[-h2, 0, 0.92], [0, 0, 1.0], [h2, 0, 0.92]]
+    for (let p = 0; p < prof.length - 1; p++) {
+      const [o0, l0, c0] = prof[p], [o1, l1, c1] = prof[p + 1]
+      const start = pos.length / 3
+      for (let s = 0; s <= n; s++) {
+        const x = a[0] + (b[0] - a[0]) * (s / n), z = a[1] + (b[1] - a[1]) * (s / n)
+        const ym = t.heightAt(x, z) + 0.25
+        pos.push(x + nx * o0, ym + l0, z + nz * o0, x + nx * o1, ym + l1, z + nz * o1)
+        col.push(c0, c0, c0, c1, c1, c1)
+        if (s > 0) { const o = start + (s - 1) * 2; idx.push(o, o + 1, o + 2, o + 1, o + 3, o + 2) }
+      }
     }
   }
   const sg = new THREE.BufferGeometry()
-  sg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); sg.setIndex(idx); sg.computeVertexNormals()
-  const streetMat = new THREE.MeshStandardMaterial({ color: GRID.paving, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })
+  sg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); sg.setAttribute('color', new THREE.Float32BufferAttribute(col, 3))
+  sg.setIndex(idx); sg.computeVertexNormals()
+  const streetMat = new THREE.MeshStandardMaterial({ color: GRID.paving, roughness: 0.9, vertexColors: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })
+  patchPaving(streetMat, u)
   const streets = new THREE.Mesh(sg, streetMat); streets.receiveShadow = true; streets.renderOrder = 1
 
   // OSM-mapped ruins (houses, gymnasium, nymphaea…) raised as simple masses, unless a detailed model stands there
@@ -206,28 +276,80 @@ function buildCity(t: Terrain): Built {
     ruins = new THREE.Mesh(merged, mats.limestone); ruins.castShadow = ruins.receiveShadow = true
   }
 
-  const walls = new THREE.InstancedMesh(unitBox(), mats.plaster, wallM.length)
-  wallM.forEach((m, i) => walls.setMatrixAt(i, m))
-  const roofs = new THREE.InstancedMesh(unitGable(), mats.roofTile, roofM.length)
-  roofM.forEach((m, i) => roofs.setMatrixAt(i, m))
+  const inst = (geo: THREE.BufferGeometry, mat: THREE.Material, ms: THREE.Matrix4[]) => {
+    const im = new THREE.InstancedMesh(geo, mat, Math.max(1, ms.length))
+    im.count = ms.length
+    ms.forEach((m, i) => im.setMatrixAt(i, m))
+    return im
+  }
+  const walls = inst(unitBox(), mats.plaster, wallM)
+  const roofs = [inst(unitGable(), mats.roofTile, roofM.gable), inst(unitHip(), mats.roofTile, roofM.hip), inst(unitShed(), mats.roofTile, roofM.shed)]
+  const courts = inst(unitBox(), mats.travertine, courtM)
+  const piers = inst(unitBox(), mats.plaster, pierM)
   // per-house colour variation: weathered terracotta of different firings, lime plaster of different ages
-  const c = new THREE.Color(), roofTones = ['#c26a43', '#b45a38', '#a8613f', '#c97f55', '#9c5236', '#b8704a'].map((h) => new THREE.Color(h))
-  for (let i = 0; i < roofM.length; i++) {
+  const c = new THREE.Color(), roofTones = ['#c26a43', '#b45a38', '#a8613f', '#c97f55', '#9c5236', '#b8704a', '#a65a3e'].map((h) => new THREE.Color(h))
+  for (const rm of roofs) for (let i = 0; i < rm.count; i++) {
     // instance colour multiplies the shared roof colour, so store tone / base
-    const tone = roofTones[Math.floor(rand() * roofTones.length)], k = 0.92 + rand() * 0.14
+    const tone = roofTones[Math.floor(rand() * roofTones.length)], k = 0.9 + rand() * 0.16
     c.setRGB(tone.r / ROOF_BASE.r * k, tone.g / ROOF_BASE.g * k, tone.b / ROOF_BASE.b * k)
-    roofs.setColorAt(i, c)
+    rm.setColorAt(i, c)
   }
-  for (let i = 0; i < wallM.length; i++) {
-    const w = 0.86 + rand() * 0.16
-    walls.setColorAt(i, c.setRGB(w, w * (0.95 + rand() * 0.04), w * (0.88 + rand() * 0.06)))
+  // lime-washed walls, a few ochre and pinkish washes
+  const washes = [[1, 0.97, 0.92], [1, 0.97, 0.92], [1, 0.97, 0.92], [1, 0.93, 0.82], [1, 0.92, 0.86], [0.97, 0.95, 0.9]]
+  for (const im of [walls, piers]) for (let i = 0; i < im.count; i++) {
+    const w = 0.86 + rand() * 0.16, ws = washes[Math.floor(rand() * washes.length)]
+    im.setColorAt(i, c.setRGB(w * ws[0], w * ws[1], w * ws[2]))
   }
-  for (const im of [walls, roofs]) {
+  for (let i = 0; i < courts.count; i++) courts.setColorAt(i, c.setScalar(0.92 + rand() * 0.08))
+  for (const im of [walls, ...roofs, courts, piers]) {
     im.castShadow = im.receiveShadow = true; im.instanceMatrix.needsUpdate = true
     if (im.instanceColor) im.instanceColor.needsUpdate = true
     im.computeBoundingSphere()
   }
-  return { walls, roofs, streets, ruins, stats: { insulae, houses, streetKm: streetLen / 1000 } }
+  courts.castShadow = false
+  return { walls, roofs, courts, piers, streets, ruins, stats: { insulae, houses, streetKm: streetLen / 1000 } }
+}
+
+/** Paving slabs on the street ribbons, laid along the grid axis: staggered courses, joints with bump relief,
+ * per-slab tint, wheel-worn centre. Fades out with distance and in plan mode. */
+function patchPaving(m: THREE.MeshStandardMaterial, axis: V2) {
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.uPlan = sceneUniforms.uPlan
+    sh.uniforms.uAxis = { value: new THREE.Vector2(axis[0], axis[1]) }
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vPW;')
+      .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvPW = (modelMatrix * vec4(transformed, 1.0)).xyz;')
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#include <common>
+uniform float uPlan;
+uniform vec2 uAxis;
+varying vec3 vPW;
+float pBump = 0.0;
+float ph21(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }`)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+{
+  vec2 g = vec2(dot(vPW.xz, uAxis), dot(vPW.xz, vec2(uAxis.y, -uAxis.x)));
+  vec2 uv = vec2(g.x / 1.25, g.y / 0.85);
+  float row = floor(uv.y);
+  uv.x += ph21(vec2(row, 1.3)) * 0.8;
+  vec2 cell = floor(uv), f = fract(uv);
+  float jd = min(min(f.x, 1.0 - f.x) * 1.25, min(f.y, 1.0 - f.y) * 0.85);
+  float px = length(fwidth(vPW.xz));
+  float fade = (1.0 - smoothstep(0.05, 0.25, px)) * (1.0 - uPlan);
+  float joint = (1.0 - smoothstep(0.015, 0.015 + max(0.02, px * 1.5), jd)) * fade;
+  diffuseColor.rgb *= 1.0 + (ph21(cell) - 0.5) * 0.16 * fade - joint * 0.3;
+  pBump = (smoothstep(0.0, 0.12, jd) * 0.01 - joint * 0.015) * fade;
+}`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+{
+  vec3 dpdx = dFdx(-vViewPosition), dpdy = dFdy(-vViewPosition);
+  float dhx = dFdx(pBump), dhy = dFdy(pBump);
+  vec3 r1 = cross(dpdy, normal), r2 = cross(normal, dpdx);
+  float det = dot(dpdx, r1);
+  normal = normalize(abs(det) * normal - sign(det) * (dhx * r1 + dhy * r2));
+}`)
+  }
+  m.customProgramCacheKey = () => 'hier-paving'
 }
 
 function mergeAll(gs: THREE.BufferGeometry[]) {
@@ -265,7 +387,7 @@ export function CityGrid({ terrain }: { terrain: Terrain }) {
     if (built && import.meta.env.DEV) console.info('[city grid]', built.stats)
     return () => {
       if (!built) return
-      built.walls.dispose(); built.roofs.dispose(); built.streets.geometry.dispose()
+      built.walls.dispose(); built.roofs.forEach((r) => r.dispose()); built.courts.dispose(); built.piers.dispose(); built.streets.geometry.dispose()
       ;(built.streets.material as THREE.Material).dispose(); built.ruins?.geometry.dispose()
     }
   }, [built])
@@ -297,7 +419,9 @@ export function CityGrid({ terrain }: { terrain: Terrain }) {
     <group ref={group} visible={visible}>
       <primitive object={built.streets} />
       <primitive object={built.walls} />
-      <primitive object={built.roofs} />
+      {built.roofs.map((r, i) => <primitive key={i} object={r} />)}
+      <primitive object={built.courts} />
+      <primitive object={built.piers} />
       {built.ruins && <primitive object={built.ruins} />}
       {visible && mode !== 'plan' && labels.map((l, i) => (
         <Html key={l.en + l.lat} position={l.pos} center zIndexRange={[4, 0]} style={{ pointerEvents: 'none' }}>

@@ -1,4 +1,4 @@
-import { Suspense, use, useEffect, useRef } from 'react'
+import { Suspense, lazy, use, useEffect, useRef } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { AdaptiveDpr, Environment, Lightformer, OrbitControls, PerformanceMonitor, Stats } from '@react-three/drei'
 import * as THREE from 'three'
@@ -10,7 +10,8 @@ import { City } from './City'
 import { CityGrid } from './CityGrid'
 import { Pins } from './Pins'
 import { TodayTiles } from './TodayTiles'
-import { PloutonionMist } from './Effects'
+import { HAZE, PloutonionMist, SkyDome, patchFogChunks } from './Effects'
+import { sceneUniforms } from './Terrain'
 import { PlanInk } from './PlanInk'
 import { Navigation } from './Navigation'
 import { installCapture } from './captureRenders'
@@ -18,6 +19,15 @@ import { useApp } from '../store'
 import { useState } from 'react'
 
 const terrainPromise = loadTerrain()
+patchFogChunks()
+const PostFX = lazy(() => import('./PostFX'))
+
+/** Phones/tablets and small screens get the light tier: 2k shadows, no post-processing. */
+const isLight = typeof window !== 'undefined' &&
+  (window.matchMedia?.('(pointer: coarse)').matches || Math.min(window.innerWidth, window.innerHeight) < 700)
+const SHADOW_RES = isLight ? 2048 : 4096
+/** ?fx=0 / ?fx=1 forces the post-processing tier off/on (testing). */
+const fxParam = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('fx') : null
 
 /** Golden-hour sun from the west-south-west: Pamukkale's travertines face west. */
 const SUN_DIR = new THREE.Vector3(-0.78, 0.42, 0.46).normalize()
@@ -41,52 +51,61 @@ function World() {
 function Lights() {
   const light = useRef<THREE.DirectionalLight>(null)
   const { scene } = useThree()
+  const fog = useRef<THREE.Fog>(null)
   useEffect(() => {
     const l = light.current
     if (!l) return
     scene.add(l.target)
-    scene.fog = new THREE.Fog('#b9a68c', 2600, 8000)
+    // linear range drives the custom height fog (Effects.patchFogChunks): aerial perspective from ~500 m
+    fog.current = new THREE.Fog(HAZE.clone(), 500, 9000)
+    scene.fog = fog.current
     return () => { scene.fog = null }
   }, [scene])
   // shadow frustum follows the orbit target and tightens as the camera comes closer -> crisp close-up shadows
   const tgt = useRef(new THREE.Vector3())
   useFrame(() => {
     const l = light.current, ctl = rig.controls, cam = rig.camera
+    // no haze on the parchment plan
+    if (fog.current) { const p = sceneUniforms.uPlan.value; fog.current.near = 500 + p * 1e6; fog.current.far = 9000 + p * 2e6 }
     if (!l || !ctl || !cam) return
     tgt.current.copy(ctl.target)
     const d = cam.position.distanceTo(ctl.target)
-    const ext = THREE.MathUtils.clamp(d * 0.75, 90, 1100)
+    const ext = THREE.MathUtils.clamp(d * 0.62, 70, 1100)
     const sc = l.shadow.camera
     if (Math.abs(sc.right - ext) > ext * 0.08) {
       sc.left = -ext; sc.right = ext; sc.top = ext; sc.bottom = -ext; sc.updateProjectionMatrix()
     }
     // snap to shadow texels to avoid shimmering while orbiting
-    const texel = (2 * ext) / 2048
+    const texel = (2 * ext) / SHADOW_RES
     const tx = Math.round(tgt.current.x / texel) * texel, tz = Math.round(tgt.current.z / texel) * texel
     l.target.position.set(tx, tgt.current.y, tz)
     l.position.set(tx + SUN_DIR.x * 1600, tgt.current.y + SUN_DIR.y * 1600, tz + SUN_DIR.z * 1600)
-    l.shadow.normalBias = THREE.MathUtils.clamp(ext / 600, 0.15, 1.2)
+    // bias in world units scales with texel size: no acne on the travertine, no peter-panning under houses
+    l.shadow.normalBias = THREE.MathUtils.clamp(texel * 1.6, 0.06, 1.0)
   })
   return (
     <>
-      <hemisphereLight args={['#d6e6f2', '#8a6b4a', 0.55]} />
+      {/* sky/ground bounce kept low so the sun's shadows read; the environment adds soft directional fill */}
+      <hemisphereLight args={['#c4d8ec', '#7a5c3e', 0.32]} />
       <directionalLight
         ref={light}
-        intensity={2.9}
-        color="#ffd6a0"
+        intensity={3.4}
+        color="#ffd09a"
         castShadow
-        shadow-mapSize={[2048, 2048]}
-        shadow-bias={-0.0003}
+        shadow-mapSize={[SHADOW_RES, SHADOW_RES]}
+        shadow-bias={-0.0002}
         shadow-camera-near={200}
         shadow-camera-far={3400}
       />
-      {/* soft image-based light without any download: warm sun-side + cool sky light-formers */}
-      <Environment resolution={128} frames={1}>
-        <color attach="background" args={['#9fb4c4']} />
-        <Lightformer form="rect" intensity={2.2} color="#ffd9b0" position={[-6, 3, 4]} scale={[8, 3, 1]} />
-        <Lightformer form="rect" intensity={1.1} color="#cfe3f5" position={[0, 8, 0]} rotation-x={Math.PI / 2} scale={[14, 14, 1]} />
-        <Lightformer form="rect" intensity={0.5} color="#a88b6a" position={[0, -6, 0]} rotation-x={-Math.PI / 2} scale={[14, 14, 1]} />
+      {/* soft image-based light without any download: warm low sun-side, cool sky dome, warm ground bounce */}
+      <Environment resolution={128} frames={1} environmentIntensity={0.85}>
+        <color attach="background" args={['#8fa6ba']} />
+        <Lightformer form="rect" intensity={2.6} color="#ffcf9c" position={[-7, 3, 4]} scale={[9, 2.5, 1]} />
+        <Lightformer form="rect" intensity={1.0} color="#bcd6f0" position={[0, 8, 0]} rotation-x={Math.PI / 2} scale={[16, 16, 1]} />
+        <Lightformer form="rect" intensity={0.45} color="#e9c9a0" position={[6, 1.5, -4]} scale={[10, 2, 1]} />
+        <Lightformer form="rect" intensity={0.55} color="#9c7b58" position={[0, -6, 0]} rotation-x={-Math.PI / 2} scale={[16, 16, 1]} />
       </Environment>
+      <SkyDome sunDir={SUN_DIR} />
     </>
   )
 }
@@ -159,25 +178,35 @@ function Controls() {
 
 export function Experience() {
   const showPerf = useApp((s) => s.showPerf)
-  const [dpr, setDpr] = useState(Math.min(window.devicePixelRatio, 1.75))
+  const mode = useApp((s) => s.mode)
+  const maxDpr = Math.min(window.devicePixelRatio, 1.75)
+  const [dpr, setDpr] = useState(maxDpr)
+  // quality tier: AO/SMAA post chain on desktop GPUs; the first sustained decline turns it off for the session
+  const [fx, setFx] = useState(fxParam ? fxParam === '1' : !isLight)
+  useEffect(() => {
+    if (import.meta.env.DEV) (window as unknown as { __fx: (on: boolean) => void }).__fx = setFx
+  }, [])
   return (
     <Canvas
       shadows
       dpr={dpr}
-      gl={{ antialias: true, powerPreference: 'high-performance', alpha: true, toneMappingExposure: 1.05 }}
+      gl={{ antialias: true, powerPreference: 'high-performance', alpha: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.0 }}
       camera={{ position: [-1600, 1100, 1500], fov: 42, near: 2, far: 30000 }}
       onCreated={({ gl, scene }) => { if (import.meta.env.DEV) { (window as unknown as { __gl: unknown }).__gl = gl; installCapture(gl, scene) } }}
       onPointerMissed={() => useApp.getState().mode !== 'tour' && useApp.getState().select(null)}
     >
       <PerformanceMonitor
-        onDecline={() => setDpr((d) => Math.max(1, d - 0.25))}
-        onIncline={() => setDpr((d) => Math.min(Math.min(window.devicePixelRatio, 1.75), d + 0.25))}
+        flipflops={4}
+        onDecline={() => { if (fx && fxParam !== '1') setFx(false); else setDpr((d) => Math.max(1, d - 0.25)) }}
+        onIncline={() => setDpr((d) => Math.min(maxDpr, d + 0.25))}
+        onFallback={() => { setFx(false); setDpr(1) }}
       />
       <AdaptiveDpr pixelated={false} />
       <Lights />
       <Suspense fallback={null}>
         <World />
       </Suspense>
+      {fx && mode !== 'plan' && <Suspense fallback={null}><PostFX /></Suspense>}
       <GradeAnimator />
       <Controls />
       <IntroOrbit />

@@ -115,7 +115,7 @@ export function PlaceAudio() {
 
   if (!voice) return null
   return (
-    <div className={'pointer-events-auto absolute left-4 top-20 z-20 max-w-sm rounded-2xl glass px-4 py-3 text-sm sm:left-6 ' + (mode === 'plan' ? 'md:left-72 md:top-32' : 'md:top-auto md:bottom-28')}>
+    <div className={'pointer-events-auto absolute inset-x-2.5 top-14 z-20 rounded-2xl glass px-3 py-2 text-xs sm:inset-x-auto sm:left-6 sm:top-20 sm:max-w-sm sm:px-4 sm:py-3 sm:text-sm ' + (mode === 'plan' ? 'md:left-72 md:top-32' : 'md:top-auto md:bottom-28')}>
       <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-gold">
         <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-gold" />
         {LANG_LABEL[voice.lang][lang]}

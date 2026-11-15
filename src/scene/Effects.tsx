@@ -1,6 +1,7 @@
 import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
+import { sceneUniforms } from './Terrain'
 import type { Terrain } from './terrainData'
 import { LANDMARKS } from '../content/landmarks'
 import { useApp } from '../store'
@@ -43,4 +44,84 @@ export function PloutonionMist({ terrain }: { terrain: Terrain }) {
       {puffs.map((p, i) => <sprite key={i} material={mat} scale={[p.s, p.s * 0.45, 1]} />)}
     </group>
   )
+}
+
+/* ------------------------------------------------------------------------------------------------
+ * Atmosphere: height fog / aerial perspective (global fog chunk), sky dome, and the optional
+ * high-quality post chain (half-res N8AO ambient occlusion + SMAA + ACES) for capable GPUs.
+ * ---------------------------------------------------------------------------------------------- */
+
+/** Horizon haze: fog colour and the bottom of the sky gradient are the same, so distance melts into sky. */
+export const HAZE = new THREE.Color('#cdc1ad')
+const ZENITH = new THREE.Color('#4f7fb0')
+const GROUND = new THREE.Color('#2a1f16')
+
+// Height fog: linear THREE.Fog drives start/end, density thickens in the valley (low Y) and thins with altitude.
+// Patched once, globally, so every built-in material (incl. instanced and sprite materials) gets it.
+let fogPatched = false
+export function patchFogChunks() {
+  if (fogPatched) return
+  fogPatched = true
+  const C = THREE.ShaderChunk as unknown as Record<string, string>
+  C.fog_pars_vertex = '#ifdef USE_FOG\n\tvarying float vFogDepth;\n\tvarying float vFogWorldY;\n#endif'
+  // world position from the view-space position (view matrix is rigid): w = R^T (mv - t)
+  C.fog_vertex = '#ifdef USE_FOG\n\tvFogDepth = - mvPosition.z;\n\tvFogWorldY = ((mvPosition.xyz - viewMatrix[3].xyz) * mat3(viewMatrix)).y;\n#endif'
+  C.fog_pars_fragment = `#ifdef USE_FOG
+\tuniform vec3 fogColor;
+\tvarying float vFogDepth;
+\tvarying float vFogWorldY;
+\t#ifdef FOG_EXP2
+\t\tuniform float fogDensity;
+\t#else
+\t\tuniform float fogNear;
+\t\tuniform float fogFar;
+\t#endif
+#endif`
+  C.fog_fragment = `#ifdef USE_FOG
+\t#ifdef FOG_EXP2
+\t\tfloat fogFactor = 1.0 - exp( - fogDensity * fogDensity * vFogDepth * vFogDepth );
+\t#else
+\t\tfloat fogT = max( vFogDepth - fogNear, 0.0 ) / ( fogFar - fogNear );
+\t\tfloat fogH = exp( - max( vFogWorldY - 40.0, 0.0 ) / 240.0 );
+\t\tfloat fogFactor = 1.0 - exp( - fogT * ( 0.3 + 1.2 * fogH ) - fogT * fogT * 1.4 );
+\t#endif
+\tgl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, fogFactor );
+#endif`
+}
+
+/** Gradient sky dome that follows the camera: haze at the horizon, blue overhead, a warm glow round the sun,
+ * dark earth below. Fades out in plan mode so the parchment map sits on the page background. */
+export function SkyDome({ sunDir }: { sunDir: THREE.Vector3 }) {
+  const mesh = useRef<THREE.Mesh>(null)
+  const mat = useMemo(() => new THREE.ShaderMaterial({
+    uniforms: {
+      uZenith: { value: ZENITH }, uHaze: { value: HAZE }, uGround: { value: GROUND },
+      uSun: { value: sunDir.clone().normalize() }, uSunCol: { value: new THREE.Color('#ffc58a') },
+      uPlan: sceneUniforms.uPlan,
+    },
+    vertexShader: /* glsl */ `
+      varying vec3 vDir;
+      void main() {
+        vDir = normalize((modelMatrix * vec4(position, 1.0)).xyz - cameraPosition);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }`,
+    fragmentShader: /* glsl */ `
+      uniform vec3 uZenith, uHaze, uGround, uSun, uSunCol;
+      uniform float uPlan;
+      varying vec3 vDir;
+      void main() {
+        vec3 d = normalize(vDir);
+        float e = d.y;
+        vec3 sky = mix(uHaze, uZenith, pow(smoothstep(0.0, 0.75, e), 0.7));
+        float s = max(dot(d, uSun), 0.0);
+        sky += uSunCol * (pow(s, 6.0) * 0.35 + pow(s, 64.0) * 0.6) * smoothstep(-0.1, 0.1, e);
+        vec3 col = e >= 0.0 ? sky : mix(uHaze, uGround, smoothstep(0.0, 0.18, -e));
+        gl_FragColor = vec4(col, 1.0 - uPlan);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }`,
+    side: THREE.BackSide, depthWrite: false, transparent: true, fog: false,
+  }), [sunDir])
+  useFrame(({ camera }) => { mesh.current?.position.copy(camera.position) })
+  return <mesh ref={mesh} material={mat} frustumCulled={false} renderOrder={-10}><sphereGeometry args={[14000, 32, 16]} /></mesh>
 }

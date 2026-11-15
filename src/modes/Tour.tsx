@@ -99,12 +99,12 @@ export function TourOverlay() {
     <>
       <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[7vh] bg-gradient-to-b from-black/70 to-transparent" />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[34vh] bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
-      <div className="absolute inset-x-0 bottom-0 z-20 flex flex-col items-center px-4 pb-6 text-center">
+      <div className="absolute inset-x-0 bottom-0 z-20 flex flex-col items-center px-3 pb-[max(1rem,env(safe-area-inset-bottom))] text-center sm:px-4 sm:pb-6">
         <p className="text-[11px] uppercase tracking-[0.3em] text-gold">{index + 1} / {TOUR.length} · {step.title[lang]}</p>
-        <p key={index + lang} className="mt-3 max-w-3xl font-serif text-xl leading-relaxed text-white drop-shadow-[0_2px_8px_rgba(0,0,0,.8)] sm:text-[26px] animate-[fadeIn_.8s_ease]">
+        <p key={index + lang} className="mt-2 max-w-3xl font-serif text-base leading-relaxed sm:mt-3 sm:text-xl text-white drop-shadow-[0_2px_8px_rgba(0,0,0,.8)] sm:text-[26px] animate-[fadeIn_.8s_ease]">
           {line}
         </p>
-        <div className="mt-5 flex items-center gap-2">
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-2 sm:mt-5">
           <button className="glass btn-ghost" onClick={() => s.setTour(Math.max(0, index - 1))} disabled={index === 0}>← {t('prev')}</button>
           <button className="btn-gold min-w-[110px] justify-center" onClick={() => s.setTourPlaying(!playing)}>{playing ? '❚❚ ' + t('pause') : '▶ ' + t('play')}</button>
           <button className="glass btn-ghost" onClick={() => s.setTour(Math.min(TOUR.length - 1, index + 1))} disabled={index === TOUR.length - 1}>{t('next')} →</button>

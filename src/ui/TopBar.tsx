@@ -18,52 +18,118 @@ export function LangSwitch() {
   )
 }
 
+function ModeTabs({ compact = false }: { compact?: boolean }) {
+  const t = useT()
+  const mode = useApp((s) => s.mode)
+  const set = useApp.getState()
+  const tabs: Array<{ id: 'explore' | 'plan' | 'tour'; icon: string; label: string; go: () => void }> = [
+    { id: 'explore', icon: '◭', label: t('map3d'), go: () => set.setMode('explore') },
+    { id: 'plan', icon: '▦', label: t('plan'), go: () => { set.setEra('ancient'); set.setMode('plan') } },
+    { id: 'tour', icon: '▶', label: t('tour'), go: () => { set.select(null); set.setMode('tour'); set.setTour(0, true) } },
+  ]
+  if (compact) return (
+    <>
+      {tabs.map((x) => (
+        <button key={x.id} onClick={x.go} aria-current={mode === x.id}
+          className={'flex flex-1 flex-col items-center gap-0.5 rounded-2xl py-1.5 text-[11px] leading-tight ' + (mode === x.id ? 'bg-travertine/90 text-ink' : 'text-travertine/80')}>
+          <span className="text-base leading-none" aria-hidden>{x.icon}</span>{x.label}
+        </button>
+      ))}
+    </>
+  )
+  return (
+    <>
+      {tabs.map((x) => (
+        <button key={x.id} className={mode === x.id ? 'btn-active' : 'btn-ghost'} onClick={x.go}>{x.id === 'tour' ? '▶ ' : ''}{x.label}</button>
+      ))}
+    </>
+  )
+}
+
+function EraSwitch() {
+  const t = useT()
+  const era = useApp((s) => s.era)
+  const set = useApp.getState()
+  return (
+    <div className="glass flex rounded-full p-1 text-xs">
+      <button className={era === 'ancient' ? 'btn-active px-3 py-1' : 'btn-ghost px-3 py-1'} onClick={() => set.setEra('ancient')}>{t('ancient')}</button>
+      <button className={era === 'today' ? 'btn-active px-3 py-1' : 'btn-ghost px-3 py-1'} onClick={() => set.setEra('today')}>{t('today')}</button>
+    </div>
+  )
+}
+
+function GridToggle() {
+  const t = useT()
+  const showGrid = useApp((s) => s.showGrid)
+  return (
+    <button
+      className={'glass rounded-full px-3 py-1.5 text-xs ' + (showGrid ? 'bg-gold/80 text-ink' : 'btn-ghost')}
+      onClick={() => useApp.getState().setShowGrid(!showGrid)} aria-pressed={showGrid} title={t('wholeCityTip')}
+    >⊞ {t('wholeCity')}</button>
+  )
+}
+
 export function TopBar() {
   const t = useT()
   const mode = useApp((s) => s.mode)
-  const era = useApp((s) => s.era)
+  const lang = useApp((s) => s.lang)
   const [qr, setQr] = useState(false)
-  const showGrid = useApp((s) => s.showGrid)
+  const [more, setMore] = useState(false)
   if (mode === 'intro') return null
   const set = useApp.getState()
   return (
-    <header className="pointer-events-none absolute inset-x-0 top-0 z-30 flex flex-wrap items-start justify-between gap-3 p-3 sm:p-4">
-      <button className="pointer-events-auto glass flex items-center gap-3 rounded-full py-1.5 pl-2 pr-4" onClick={() => { set.select(null); set.setMode('intro') }}>
-        <img src="/favicon.svg" alt="" className="h-8 w-8" />
-        <span className="font-display text-lg tracking-[0.15em]">HIERAPOLIS</span>
-      </button>
+    <>
+      <header className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-start justify-between gap-2 p-2.5 pt-[max(0.625rem,env(safe-area-inset-top))] sm:gap-3 sm:p-4">
+        <button className="pointer-events-auto glass flex items-center gap-2 rounded-full py-1 pl-1.5 pr-3 sm:gap-3 sm:py-1.5 sm:pl-2 sm:pr-4" onClick={() => { set.select(null); set.setMode('intro') }}>
+          <img src="/favicon.svg" alt="" className="h-7 w-7 sm:h-8 sm:w-8" />
+          <span className="font-display text-sm tracking-[0.15em] sm:text-lg">HIERAPOLIS</span>
+        </button>
 
-      <nav className="pointer-events-auto glass order-3 mx-auto flex rounded-full p-1 sm:order-none">
-        <button className={mode === 'explore' ? 'btn-active' : 'btn-ghost'} onClick={() => set.setMode('explore')}>{t('map3d')}</button>
-        <button className={mode === 'plan' ? 'btn-active' : 'btn-ghost'} onClick={() => { set.setEra('ancient'); set.setMode('plan') }}>{t('plan')}</button>
-        <button className={mode === 'tour' ? 'btn-active' : 'btn-ghost'} onClick={() => { set.select(null); set.setMode('tour'); set.setTour(0, true) }}>▶ {t('tour')}</button>
-      </nav>
+        <nav className="pointer-events-auto glass mx-auto hidden rounded-full p-1 sm:flex"><ModeTabs /></nav>
 
-      <div className="pointer-events-auto flex items-center gap-2">
-        <button
-          className={'glass rounded-full px-3 py-1.5 text-xs ' + (showGrid ? 'bg-gold/80 text-ink' : 'btn-ghost')}
-          onClick={() => set.setShowGrid(!showGrid)} aria-pressed={showGrid} title={t('wholeCityTip')}
-        >⊞ {t('wholeCity')}</button>
-        {mode !== 'plan' && (
-          <div className="glass flex rounded-full p-1 text-xs">
-            <button className={era === 'ancient' ? 'btn-active px-3 py-1' : 'btn-ghost px-3 py-1'} onClick={() => set.setEra('ancient')}>{t('ancient')}</button>
-            <button className={era === 'today' ? 'btn-active px-3 py-1' : 'btn-ghost px-3 py-1'} onClick={() => set.setEra('today')}>{t('today')}</button>
+        <div className="pointer-events-auto flex items-center gap-2">
+          <div className="hidden items-center gap-2 sm:flex">
+            <GridToggle />
+            {mode !== 'plan' && <EraSwitch />}
+            <LangSwitch />
+          </div>
+          <SoundMenu />
+          <a className="glass btn-ghost hidden sm:inline-flex" href="#/guide" target="_blank" rel="noreferrer" title={t('guide')}>⎙</a>
+          <button className="glass btn-ghost hidden sm:inline-flex" onClick={() => setQr((q) => !q)} title={t('scanToOpen')}>▦</button>
+          <button className="glass btn-ghost h-9 w-9 justify-center p-0 text-lg sm:hidden" onClick={() => setMore((m) => !m)} aria-expanded={more} aria-label="menu">⋯</button>
+        </div>
+
+        {qr && (
+          <div className="pointer-events-auto absolute right-4 top-20 glass rounded-2xl p-4 text-center" onClick={() => setQr(false)}>
+            <div className="rounded-xl bg-white p-3"><QRCodeSVG value={window.location.origin} size={180} /></div>
+            <p className="mt-2 text-xs text-travertine/80">{t('scanToOpen')}</p>
+            <p className="text-[11px] text-travertine/50">{window.location.host}</p>
           </div>
         )}
-        <LangSwitch />
-        <SoundMenu />
-        <a className="glass btn-ghost hidden sm:inline-flex" href="#/guide" target="_blank" rel="noreferrer" title={t('guide')}>⎙</a>
-        <button className="glass btn-ghost hidden sm:inline-flex" onClick={() => setQr((q) => !q)} title={t('scanToOpen')}>▦</button>
-      </div>
+      </header>
 
-      {qr && (
-        <div className="pointer-events-auto absolute right-4 top-20 glass rounded-2xl p-4 text-center" onClick={() => setQr(false)}>
-          <div className="rounded-xl bg-white p-3"><QRCodeSVG value={window.location.origin} size={180} /></div>
-          <p className="mt-2 text-xs text-travertine/80">{t('scanToOpen')}</p>
-          <p className="text-[11px] text-travertine/50">{window.location.host}</p>
+      {/* mobile: options sheet */}
+      {more && (
+        <div className="absolute inset-0 z-40 sm:hidden" onClick={() => setMore(false)}>
+          <div className="glass absolute right-2.5 top-14 w-[min(88vw,320px)] rounded-2xl p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex flex-col gap-3 text-sm">
+              {mode !== 'plan' && <div className="flex items-center justify-between"><span className="text-travertine/70">{lang === 'en' ? 'View' : 'Görünüm'}</span><EraSwitch /></div>}
+              <div className="flex items-center justify-between"><span className="text-travertine/70">{lang === 'en' ? 'City' : 'Kent'}</span><GridToggle /></div>
+              <div className="flex items-center justify-between"><span className="text-travertine/70">{lang === 'en' ? 'Language' : 'Dil'}</span><LangSwitch /></div>
+              <div className="flex gap-2 border-t border-white/10 pt-3">
+                <a className="btn-ghost flex-1 justify-center rounded-xl border border-white/15" href="#/guide">⎙ {t('guide')}</a>
+                <a className="btn-ghost flex-1 justify-center rounded-xl border border-white/15" href="#/poster">▭ {lang === 'en' ? 'Posters' : 'Posterler'}</a>
+              </div>
+            </div>
+          </div>
         </div>
       )}
-    </header>
+
+      {/* mobile: bottom tab bar */}
+      {mode !== 'tour' && (
+        <nav className="glass absolute inset-x-2.5 bottom-[max(0.625rem,env(safe-area-inset-bottom))] z-20 flex gap-1 rounded-3xl p-1 sm:hidden"><ModeTabs compact /></nav>
+      )}
+    </>
   )
 }
 

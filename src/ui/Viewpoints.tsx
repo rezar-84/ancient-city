@@ -18,7 +18,7 @@ export function Viewpoints() {
   const selected = useApp((s) => s.selected)
   if (mode !== 'explore' || selected) return null
   return (
-    <div className="absolute bottom-12 left-1/2 z-10 flex max-w-[95vw] -translate-x-1/2 gap-1 overflow-x-auto rounded-full glass p-1 sm:bottom-14">
+    <div className="no-scrollbar absolute bottom-[calc(max(0.625rem,env(safe-area-inset-bottom))+64px)] left-1/2 z-10 flex max-w-[94vw] -translate-x-1/2 gap-1 overflow-x-auto rounded-full glass p-1 sm:bottom-14">
       {VIEWPOINTS.map((v) => (
         <button key={v.id} className={'btn-ghost whitespace-nowrap text-xs ' + (v.id === 'pamukkale' ? 'text-gold' : '')} onClick={() => goToViewpoint(v.id)}>
           {v.id === 'pamukkale' ? '◐ ' : ''}{v.label[lang]}

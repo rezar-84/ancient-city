@@ -57,13 +57,12 @@ export function NavControls() {
 
   if (mode === 'intro' || mode === 'tour') return null
   const plan = mode === 'plan'
-  const pos = plan
-    ? 'bottom-36 right-4 sm:right-6' + (selected ? ' sm:right-[452px]' : '')
-    : 'bottom-28 right-4 sm:bottom-16' + (selected ? ' hidden sm:flex sm:right-[452px]' : '')
-  const btn = 'glass grid h-10 w-10 place-items-center rounded-full text-lg text-travertine/90 hover:text-white'
+  const pos = (plan ? 'bottom-[200px] right-2.5 sm:bottom-36 sm:right-6' : 'bottom-[136px] right-2.5 sm:bottom-16 sm:right-4')
+    + (selected ? ' hidden sm:flex sm:right-[452px]' : '')
+  const btn = 'glass grid h-9 w-9 place-items-center rounded-full text-base text-travertine/90 hover:text-white sm:h-10 sm:w-10 sm:text-lg'
   return (
-    <div className={'absolute z-20 flex flex-col items-center gap-2 ' + pos}>
-      <button className={btn + ' h-12 w-12'} onClick={faceNorth} title={t('north')} aria-label={t('north')}>
+    <div className={'absolute z-20 flex flex-col items-center gap-1.5 sm:gap-2 ' + pos}>
+      <button className={btn + ' h-11 w-11 sm:h-12 sm:w-12'} onClick={faceNorth} title={t('north')} aria-label={t('north')}>
         <svg width="44" height="44" viewBox="0 0 44 44" aria-hidden>
           <g ref={needle}>
             <path d="M22 6 L27 22 L22 19 L17 22 Z" fill="#c9553a" />
@@ -72,8 +71,8 @@ export function NavControls() {
           </g>
         </svg>
       </button>
-      <button className={btn} onClick={() => zoom(0.6)} title={t('zoomIn')} aria-label={t('zoomIn')}>+</button>
-      <button className={btn} onClick={() => zoom(1.6)} title={t('zoomOut')} aria-label={t('zoomOut')}>−</button>
+      <button className={btn + ' max-sm:hidden'} onClick={() => zoom(0.6)} title={t('zoomIn')} aria-label={t('zoomIn')}>+</button>
+      <button className={btn + ' max-sm:hidden'} onClick={() => zoom(1.6)} title={t('zoomOut')} aria-label={t('zoomOut')}>−</button>
       <button className={btn + ' text-base'} onClick={resetView} title={t('resetView')} aria-label={t('resetView')}>⌂</button>
     </div>
   )
