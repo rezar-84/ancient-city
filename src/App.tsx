@@ -1,3 +1,6 @@
+import { LANDMARKS } from './content/landmarks'
+import { loadTerrain } from './scene/terrainData'
+import { focusLandmark } from './scene/Pins'
 import { PlaceAudio } from './audio/PlaceAudio'
 import { NavControls } from './ui/NavControls'
 import { lazy, Suspense, useEffect, useState } from 'react'
@@ -15,6 +18,7 @@ import { useT } from './i18n'
 
 const PrintGuide = lazy(() => import('./guide/PrintGuide'))
 const ARViewer = lazy(() => import('./ar/ARViewer'))
+const Posters = lazy(() => import('./guide/Posters'))
 
 function useHashRoute() {
   const [hash, setHash] = useState(window.location.hash)
@@ -54,9 +58,25 @@ export default function App() {
   const lang = useApp((s) => s.lang)
   const arOpen = useApp((s) => s.arOpen)
   useEffect(() => { document.documentElement.lang = lang }, [lang])
+  useEffect(() => {
+    const m = hash.match(/^#\/place\/([\w-]+)/)
+    if (!m || !LANDMARKS.some((l) => l.id === m[1])) return
+    const id = m[1]
+    let cancelled = false
+    void loadTerrain().then((t) => {
+      if (cancelled) return
+      useApp.getState().setMode('explore')
+      useApp.getState().select(id)
+      window.setTimeout(() => { void focusLandmark(t, id) }, 300)
+    })
+    return () => { cancelled = true }
+  }, [hash])
 
   if (hash.startsWith('#/guide')) {
     return <Suspense fallback={null}><PrintGuide /></Suspense>
+  }
+  if (hash.startsWith('#/poster')) {
+    return <Suspense fallback={null}><Posters /></Suspense>
   }
   return (
     <div className="relative h-full w-full overflow-hidden" style={{ background: 'radial-gradient(ellipse at 50% 35%, #4a3a2a 0%, #241a12 55%, #120d08 100%)' }}>
