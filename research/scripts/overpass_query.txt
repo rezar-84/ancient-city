@@ -1,0 +1,7 @@
+[out:json][timeout:180];
+(
+  nwr(37.905,29.105,37.945,29.145);
+);
+out body;
+>;
+out skel qt;

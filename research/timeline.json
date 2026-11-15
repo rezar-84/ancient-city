@@ -1,0 +1,556 @@
+[
+ {
+  "date": "Iron Age",
+  "sort_year": -800,
+  "title": "Iron Age settlement",
+  "description": "Round huts of an Iron Age settlement found in 2016 in the Northern Necropolis area.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Hierapolis"
+  ],
+  "disputed": null,
+  "landmarks": [
+   "north_necropolis"
+  ]
+ },
+ {
+  "date": "c. 1st half 7th c. BC",
+  "sort_year": -675,
+  "title": "Phrygian cult centre",
+  "description": "Phrygians build a temple/cult place of the Mother Goddess (Cybele) at the site; earliest layout of the Ploutonion with a stepped altar above the cave (Phase Ia).",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Hierapolis",
+   "https://journalofromanarchaeology.com/wp-content/uploads/2020/03/JRA32_24_DAndria.pdf"
+  ],
+  "disputed": "Date 'probably first half of 7th c. BC' is approximate.",
+  "landmarks": [
+   "ploutonion"
+  ]
+ },
+ {
+  "date": "3rd-2nd c. BC",
+  "sort_year": -200,
+  "title": "Foundation of Hierapolis",
+  "description": "Greek city founded. Sources disagree: Seleucid foundation (Antiochus I or Antiochus III), or Attalid foundation by Eumenes II of Pergamon after 188 BC; UNESCO says the Attalid kings founded the spa at the end of the 2nd c. BC.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Hierapolis",
+   "https://whc.unesco.org/en/list/485/",
+   "https://www.turkisharchaeonews.net/site/hierapolis",
+   "https://en.wikipedia.org/wiki/Ploutonion_at_Hierapolis"
+  ],
+  "disputed": "Founder disputed: Seleucids (Antiochus I 281-261 BC / Antiochus III) vs Attalids (Eumenes II, c.190 BC). The museum displays an imago clipeata of Eumenes II captioned as founder.",
+  "landmarks": []
+ },
+ {
+  "date": "188 BC",
+  "sort_year": -188,
+  "title": "Treaty of Apamea",
+  "description": "After the defeat of Antiochus III at Magnesia (190 BC) the region passes to Pergamon under Eumenes II.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Hierapolis",
+   "https://www.turkisharchaeonews.net/site/hierapolis"
+  ],
+  "disputed": null,
+  "landmarks": []
+ },
+ {
+  "date": "2nd c. BC",
+  "sort_year": -150,
+  "title": "Coinage and textiles",
+  "description": "City mints bronze coins (name 'Hieropolis'); famed for wool and dyeing using the spring water.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Hierapolis",
+   "https://whc.unesco.org/en/list/485/"
+  ],
+  "disputed": null,
+  "landmarks": []
+ },
+ {
+  "date": "133 BC",
+  "sort_year": -133,
+  "title": "Bequest to Rome",
+  "description": "Attalus III bequeaths Pergamon to Rome; Hierapolis becomes part of the Roman province of Asia (formally organised 129 BC).",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Hierapolis",
+   "https://whc.unesco.org/en/list/485/"
+  ],
+  "disputed": "Province formally organised c. 129 BC after Aristonicus' revolt; '133 BC' is the bequest year.",
+  "landmarks": []
+ },
+ {
+  "date": "AD 17",
+  "sort_year": 17,
+  "title": "Earthquake under Tiberius",
+  "description": "A major earthquake damages/destroys the city.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Hierapolis",
+   "https://www.turkisharchaeonews.net/site/hierapolis"
+  ],
+  "disputed": "Commonly repeated; the AD 17 earthquake is attested for 12 cities of Asia (Tacitus Ann. 2.47) but Hierapolis is not named there - treat as uncertain.",
+  "landmarks": []
+ },
+ {
+  "date": "c. AD 50",
+  "sort_year": 50,
+  "title": "Birth of Epictetus",
+  "description": "Stoic philosopher Epictetus born a slave at Hierapolis.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Hierapolis"
+  ],
+  "disputed": "Birth year approximate.",
+  "landmarks": []
+ },
+ {
+  "date": "AD 60",
+  "sort_year": 60,
+  "title": "Earthquake under Nero",
+  "description": "Severe earthquake ruins the city; rebuilt in Roman style with imperial support; Ploutonion monumentalised (Phase IIb).",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Hierapolis",
+   "https://whc.unesco.org/en/list/485/",
+   "https://journalofromanarchaeology.com/wp-content/uploads/2020/03/JRA32_24_DAndria.pdf"
+  ],
+  "disputed": "Tacitus (Ann. 14.27) names Laodicea for AD 60; destruction at Hierapolis rests on archaeology and later tradition.",
+  "landmarks": [
+   "ploutonion",
+   "theatre"
+  ]
+ },
+ {
+  "date": "AD 80 (tradition)",
+  "sort_year": 80,
+  "title": "Martyrdom of Philip",
+  "description": "Tradition places the martyrdom of the apostle Philip at Hierapolis in AD 80.",
+  "sources": [
+   "https://whc.unesco.org/en/list/485/",
+   "https://en.wikipedia.org/wiki/Hierapolis"
+  ],
+  "disputed": "Tradition only; identity Apostle vs Evangelist debated since antiquity.",
+  "landmarks": [
+   "martyrium_philip",
+   "tomb_philip"
+  ]
+ },
+ {
+  "date": "c. AD 84-86",
+  "sort_year": 85,
+  "title": "Frontinus Gate and Street",
+  "description": "Proconsul Sextus Julius Frontinus builds the triple gate dedicated to Domitian and the colonnaded main street.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Hierapolis",
+   "https://www.turkisharchaeonews.net/site/hierapolis"
+  ],
+  "disputed": "Dates 83/84/86 in different sources.",
+  "landmarks": [
+   "frontinus_gate",
+   "plateia"
+  ]
+ },
+ {
+  "date": "Late 1st c. AD",
+  "sort_year": 95,
+  "title": "Latrine on Frontinus Street",
+  "description": "Public latrine built just inside the Frontinus Gate.",
+  "sources": [
+   "https://www.turkisharchaeonews.net/site/hierapolis"
+  ],
+  "disputed": null,
+  "landmarks": [
+   "latrine"
+  ]
+ },
+ {
+  "date": "AD 117-138 (often 'AD 129')",
+  "sort_year": 129,
+  "title": "Roman theatre completed",
+  "description": "Theatre completed under Hadrian (inscription naming Tiberius Julius Myndius); often linked to a visit by Hadrian in 129.",
+  "sources": [
+   "https://ancienttheatrearchive.com/theatre/hieropolis-modern-pamukkale-turkey",
+   "https://en.wikipedia.org/wiki/Hierapolis"
+  ],
+  "disputed": "Hadrianic visit/129 date not securely attested.",
+  "landmarks": [
+   "theatre"
+  ]
+ },
+ {
+  "date": "2nd c. AD",
+  "sort_year": 150,
+  "title": "North Agora and Stoa-basilica",
+  "description": "North Agora (280 x 170 m) built; Stoa-basilica on its E side late Hadrianic-early Antonine.",
+  "sources": [
+   "https://www.thiasos.eu/wp-content/uploads/2020/05/14.Sacchi.pdf"
+  ],
+  "disputed": null,
+  "landmarks": [
+   "north_agora"
+  ]
+ },
+ {
+  "date": "AD 193-211",
+  "sort_year": 205,
+  "title": "Severan theatre facade",
+  "description": "Three-storey scaenae frons with relief friezes (Apollo/Artemis cycles, Dionysus, Severus' family) built under Septimius Severus.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Hierapolis",
+   "https://whc.unesco.org/en/list/485/",
+   "https://ancienttheatrearchive.com/theatre/hieropolis-modern-pamukkale-turkey"
+  ],
+  "disputed": "Some museum captions date reliefs 'end of 2nd c.' or 'end of 3rd c.'.",
+  "landmarks": [
+   "theatre",
+   "great_baths_museum"
+  ]
+ },
+ {
+  "date": "AD 215",
+  "sort_year": 215,
+  "title": "Caracalla and neokoros",
+  "description": "Caracalla visits and grants the neokoros title.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Hierapolis",
+   "https://www.turkisharchaeonews.net/site/hierapolis"
+  ],
+  "disputed": "Repeated by Wikipedia/TAN; primary attestation not checked.",
+  "landmarks": []
+ },
+ {
+  "date": "AD 222-235",
+  "sort_year": 228,
+  "title": "Nymphaeum of the Tritons",
+  "description": "Monumental fountain on Frontinus Street dated by inscription to Severus Alexander.",
+  "sources": [
+   "https://www.turkisharchaeonews.net/site/hierapolis"
+  ],
+  "disputed": null,
+  "landmarks": [
+   "nymphaeum_tritons"
+  ]
+ },
+ {
+  "date": "2nd half 3rd c. AD",
+  "sort_year": 270,
+  "title": "Sawmill relief",
+  "description": "Sarcophagus of Marcus Aurelius Ammianos shows a water-powered stone sawmill - earliest known crank and connecting rod.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Hierapolis_sawmill"
+  ],
+  "disputed": null,
+  "landmarks": [
+   "north_necropolis"
+  ]
+ },
+ {
+  "date": "AD 352",
+  "sort_year": 352,
+  "title": "Theatre aquatic conversion",
+  "description": "Major works on the scene building; orchestra made watertight (kolymbethra) for aquatic shows.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Hierapolis",
+   "https://ancienttheatrearchive.com/theatre/hieropolis-modern-pamukkale-turkey"
+  ],
+  "disputed": null,
+  "landmarks": [
+   "theatre"
+  ]
+ },
+ {
+  "date": "AD 370",
+  "sort_year": 370,
+  "title": "Last imperial visit",
+  "description": "Emperor Valens visits during his Persian campaign - the last imperial visit.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Hierapolis",
+   "https://www.turkisharchaeonews.net/site/hierapolis"
+  ],
+  "disputed": null,
+  "landmarks": []
+ },
+ {
+  "date": "4th c. AD",
+  "sort_year": 380,
+  "title": "Christianisation; Ploutonion closed",
+  "description": "Ploutonion entrance filled/walled; earthquake damage to Agora; Ploutonion functional until 4th c.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Hierapolis",
+   "https://en.wikipedia.org/wiki/Ploutonion_at_Hierapolis",
+   "https://journalofromanarchaeology.com/wp-content/uploads/2020/03/JRA32_24_DAndria.pdf"
+  ],
+  "disputed": null,
+  "landmarks": [
+   "ploutonion"
+  ]
+ },
+ {
+  "date": "Late 4th c. AD",
+  "sort_year": 390,
+  "title": "Theodosian walls and gates",
+  "description": "City wall circuit with North and South Byzantine gates, partly built from Agora stone.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Hierapolis",
+   "https://www.turkisharchaeonews.net/site/hierapolis"
+  ],
+  "disputed": null,
+  "landmarks": [
+   "city_walls",
+   "north_byzantine_gate",
+   "south_byzantine_gate"
+  ]
+ },
+ {
+  "date": "Early 5th c. AD",
+  "sort_year": 410,
+  "title": "Martyrium of St Philip",
+  "description": "Octagonal martyrium built on the hill NE of the city; burned late 5th/early 6th c.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Hierapolis",
+   "https://whc.unesco.org/en/list/485/",
+   "https://www.turkisharchaeonews.net/site/hierapolis"
+  ],
+  "disputed": null,
+  "landmarks": [
+   "martyrium_philip"
+  ]
+ },
+ {
+  "date": "AD 531",
+  "sort_year": 531,
+  "title": "Metropolitan see",
+  "description": "Justinian raises the bishop of Hierapolis to metropolitan.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Hierapolis"
+  ],
+  "disputed": null,
+  "landmarks": []
+ },
+ {
+  "date": "6th c. AD",
+  "sort_year": 540,
+  "title": "Cathedral",
+  "description": "Three-aisled cathedral with baptistery built.",
+  "sources": [
+   "https://www.turkisharchaeonews.net/site/hierapolis"
+  ],
+  "disputed": null,
+  "landmarks": [
+   "cathedral"
+  ]
+ },
+ {
+  "date": "Early 7th c. AD",
+  "sort_year": 610,
+  "title": "Persian raids and great earthquake",
+  "description": "Persian armies and a destructive earthquake devastate the city; theatre collapses; Antique Pool takes its present form.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Hierapolis",
+   "https://www.turkisharchaeonews.net/site/hierapolis"
+  ],
+  "disputed": "Exact year not established in sources consulted.",
+  "landmarks": [
+   "theatre",
+   "antique_pool"
+  ]
+ },
+ {
+  "date": "9th-11th c.",
+  "sort_year": 950,
+  "title": "Middle Byzantine village",
+  "description": "Houses and olive-processing installations over the ruins (e.g., Ploutonion Phase V); 11th-c. courtyard house excavated.",
+  "sources": [
+   "https://journalofromanarchaeology.com/wp-content/uploads/2020/03/JRA32_24_DAndria.pdf",
+   "https://en.wikipedia.org/wiki/Hierapolis"
+  ],
+  "disputed": null,
+  "landmarks": []
+ },
+ {
+  "date": "12th c.",
+  "sort_year": 1150,
+  "title": "Seljuk control",
+  "description": "Area comes under the Seljuk sultanate of Konya.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Hierapolis",
+   "https://www.turkisharchaeonews.net/site/hierapolis"
+  ],
+  "disputed": null,
+  "landmarks": []
+ },
+ {
+  "date": "1190",
+  "sort_year": 1190,
+  "title": "Third Crusade",
+  "description": "Frederick Barbarossa's crusaders with Byzantine allies take the settlement.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Hierapolis",
+   "https://www.turkisharchaeonews.net/site/hierapolis"
+  ],
+  "disputed": null,
+  "landmarks": []
+ },
+ {
+  "date": "13th c.",
+  "sort_year": 1250,
+  "title": "Seljuk castle",
+  "description": "Turks build a fortress on the site (OSM 'Seldjuk Fortress Wall', near museum).",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Hierapolis",
+   "https://www.turkisharchaeonews.net/site/hierapolis"
+  ],
+  "disputed": null,
+  "landmarks": []
+ },
+ {
+  "date": "1354",
+  "sort_year": 1354,
+  "title": "Final earthquake",
+  "description": "Great earthquake ends settlement within the ancient city.",
+  "sources": [
+   "https://www.turkisharchaeonews.net/site/hierapolis",
+   "https://en.wikipedia.org/wiki/Hierapolis"
+  ],
+  "disputed": "Britannica gives 1334 for abandonment after an earthquake; Wikipedia's wording is garbled.",
+  "landmarks": []
+ },
+ {
+  "date": "1838",
+  "sort_year": 1838,
+  "title": "Laborde publishes views and plan",
+  "description": "Léon de Laborde's Voyage de l'Asie Mineure publishes a plan of 'Pambouk Kalessi' and engravings of the petrified cascades and ruins.",
+  "sources": [
+   "https://commons.wikimedia.org/wiki/File:Plan_de_Pambouk_Kalessi_(Hierapolis)_-_Laborde_L%C3%A9on_Emmanuel_Simon_Joseph_-_1838.jpg"
+  ],
+  "disputed": "Earlier travellers (e.g., 18th c.) also described the site; not catalogued here.",
+  "landmarks": []
+ },
+ {
+  "date": "24 Jun - 7 Jul 1887",
+  "sort_year": 1887,
+  "title": "Carl Humann's German survey",
+  "description": "Carl Humann surveys and excavates for about two weeks; city plan dated 24 June-7 July 1887.",
+  "sources": [
+   "https://archive.org/details/bub_gb_sjTgAAAAMAAJ",
+   "https://en.wikipedia.org/wiki/Hierapolis"
+  ],
+  "disputed": null,
+  "landmarks": []
+ },
+ {
+  "date": "1898",
+  "sort_year": 1898,
+  "title": "'Altertümer von Hierapolis' published",
+  "description": "Humann, Cichorius, Judeich and Winter publish the results (JdI Ergänzungsheft 4, Berlin, G. Reimer).",
+  "sources": [
+   "https://zenon.dainst.org/Record/000146469",
+   "https://archive.org/details/bub_gb_sjTgAAAAMAAJ"
+  ],
+  "disputed": "Wikipedia/TAN wrongly give 1889 as publication year.",
+  "landmarks": []
+ },
+ {
+  "date": "1957",
+  "sort_year": 1957,
+  "title": "Italian Archaeological Mission (MAIER)",
+  "description": "Systematic Italian excavations begin under Paolo Verzone; later directors include Francesco D'Andria and Grazia Semeraro.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Hierapolis",
+   "https://www.turkisharchaeonews.net/site/hierapolis"
+  ],
+  "disputed": null,
+  "landmarks": []
+ },
+ {
+  "date": "1960s (1965)",
+  "sort_year": 1965,
+  "title": "First 'Plutonium' identification",
+  "description": "Italian archaeologists identify a gas-emitting cave beside the Temple of Apollo as the Plutonium.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Ploutonion_at_Hierapolis",
+   "https://en.wikipedia.org/wiki/Hierapolis"
+  ],
+  "disputed": "Later superseded by the 2013 identification of the sanctuary with dedicatory inscription.",
+  "landmarks": [
+   "ploutonion",
+   "temple_apollo"
+  ]
+ },
+ {
+  "date": "1984",
+  "sort_year": 1984,
+  "title": "Museum opens in the Great Baths",
+  "description": "Hierapolis Archaeology Museum installed in the Roman baths.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Hierapolis"
+  ],
+  "disputed": null,
+  "landmarks": [
+   "great_baths_museum"
+  ]
+ },
+ {
+  "date": "1988",
+  "sort_year": 1988,
+  "title": "UNESCO World Heritage",
+  "description": "Hierapolis-Pamukkale inscribed, criteria (iii)(iv)(vii).",
+  "sources": [
+   "https://whc.unesco.org/en/list/485/"
+  ],
+  "disputed": null,
+  "landmarks": []
+ },
+ {
+  "date": "2004-2014",
+  "sort_year": 2010,
+  "title": "Theatre restoration",
+  "description": "Major restoration of the theatre by the Italian mission.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Hierapolis",
+   "https://ancienttheatrearchive.com/theatre/hieropolis-modern-pamukkale-turkey"
+  ],
+  "disputed": null,
+  "landmarks": [
+   "theatre"
+  ]
+ },
+ {
+  "date": "26 July 2011",
+  "sort_year": 2011,
+  "title": "Tomb of St Philip announced",
+  "description": "D'Andria announces a church built around a 1st-c. tomb identified as Philip's, ~40 m from the Martyrium.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Hierapolis",
+   "https://en.wikipedia.org/wiki/Philip_the_Apostle",
+   "https://www.johnsanidopoulos.com/2011/07/tomb-of-apostle-philip-discovered-in.html"
+  ],
+  "disputed": "Identification is the excavator's interpretation; tomb empty.",
+  "landmarks": [
+   "tomb_philip"
+  ]
+ },
+ {
+  "date": "March 2013",
+  "sort_year": 2013,
+  "title": "Ploutonion rediscovered",
+  "description": "D'Andria announces the Ploutonion sanctuary (excavated from 2008): dedication to Pluto and Kore, theatron, pool, cave; Cerberus and snake statues found later that year.",
+  "sources": [
+   "https://journalofromanarchaeology.com/wp-content/uploads/2020/03/JRA31_04_DAndria.pdf",
+   "https://archaeology.org/news/2013/04/02/130403-turkey-hierapolis-pluto-s-gate/",
+   "https://archaeology.org/news/2013/11/18/131118-turkey-hierapolis-plutonium-statues/"
+  ],
+  "disputed": null,
+  "landmarks": [
+   "ploutonion"
+  ]
+ },
+ {
+  "date": "2018",
+  "sort_year": 2018,
+  "title": "CO2 study",
+  "description": "Pfanz et al. publish measurements of lethal CO2 concentrations (up to 91%) at the Ploutonion.",
+  "sources": [
+   "https://doi.org/10.1007/s12520-018-0599-5"
+  ],
+  "disputed": null,
+  "landmarks": [
+   "ploutonion"
+  ]
+ }
+]

@@ -1,0 +1,23 @@
+# Dokploy production stack for ar.ferially.com
+# - no container_name (keeps Dokploy logs/monitoring/zero-downtime)
+# - joins the external dokploy-network so Traefik can route the domain to port 80
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_GOOGLE_MAPS_KEY: ${VITE_GOOGLE_MAPS_KEY:-}
+    restart: unless-stopped
+    expose:
+      - "80"
+    networks:
+      - dokploy-network
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+networks:
+  dokploy-network:
+    external: true

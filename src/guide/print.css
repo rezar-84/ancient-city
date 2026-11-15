@@ -1,0 +1,13 @@
+.guide { background: #e9e4da; min-height: 100%; }
+.guide .page { width: 210mm; min-height: 297mm; margin: 10mm auto; background: #fbf8f2; box-shadow: 0 6px 30px rgba(0,0,0,.18); box-sizing: border-box; position: relative; overflow: hidden; }
+.guide .cover { display: flex; flex-direction: column; background-size: cover; background-position: center; }
+.guide .h2 { font-family: Cinzel, Georgia, serif; font-size: 20pt; letter-spacing: .08em; color: #2b2118; border-bottom: 1px solid #c9a45c; padding-bottom: 2mm; }
+.guide .card { display: flex; gap: 6mm; padding: 6mm 0; border-bottom: 1px solid rgba(43,33,24,.15); height: 128mm; overflow: hidden; }
+@page { size: A4; margin: 0; }
+@media print {
+  html, body, #root { height: auto !important; overflow: visible !important; background: #fff !important; }
+  .no-print { display: none !important; }
+  .guide { background: #fff; }
+  .guide .page { margin: 0; box-shadow: none; page-break-after: always; break-after: page; height: 297mm; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

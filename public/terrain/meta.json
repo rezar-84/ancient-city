@@ -1,0 +1,18 @@
+{
+  "bbox": {
+    "s": 37.91,
+    "n": 37.94,
+    "w": 29.105,
+    "e": 29.143
+  },
+  "lat0": 37.925,
+  "lon0": 29.124000000000002,
+  "grid": 256,
+  "widthM": 3336.8177943059463,
+  "depthM": 3317.2200000001258,
+  "minH": 197.33657836914062,
+  "maxH": 763.6333618164062,
+  "mPerDegLon": 87810.994586998,
+  "mPerDegLat": 110574,
+  "credits": "Elevation: Mapzen/AWS Terrain Tiles (SRTM, etc.). Imagery: Esri World Imagery (Esri, Maxar, Earthstar Geographics)."
+}

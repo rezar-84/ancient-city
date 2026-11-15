@@ -1,0 +1,24 @@
+{
+ "source": "OpenStreetMap via Overpass API (overpass-api.de)",
+ "license": "ODbL 1.0, (c) OpenStreetMap contributors",
+ "timestamp_osm_base": "2026-11-15T15:36:51Z",
+ "bbox_s_w_n_e": [
+  37.905,
+  29.105,
+  37.945,
+  29.145
+ ],
+ "counts": {
+  "archaeology": 75,
+  "city_walls": 33,
+  "ancient_streets": 4,
+  "footpaths": 242,
+  "modern_roads": 134,
+  "travertines_natural": 114,
+  "necropolis": 17,
+  "water_pools": 82,
+  "buildings_modern": 73,
+  "tourism_poi": 228,
+  "all_features": 1020
+ }
+}

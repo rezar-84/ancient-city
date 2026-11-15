@@ -1,0 +1,9 @@
+node_modules
+dist
+research
+scripts/.tilecache
+.env
+.env.*
+*.local
+.git
+docs/*.log
