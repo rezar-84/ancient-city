@@ -203,7 +203,7 @@ function groundUnder(t: Terrain, x: number, z: number, r: number) {
 }
 
 function shadowAll(o: THREE.Object3D) {
-  o.traverse((c) => { if ((c as THREE.Mesh).isMesh) { c.castShadow = true; c.receiveShadow = true } })
+  o.traverse((c) => { if ((c as THREE.Mesh).isMesh) { c.castShadow = !c.userData.noShadow; c.receiveShadow = true } })
 }
 
 export function City({ terrain }: { terrain: Terrain }) {
@@ -229,16 +229,26 @@ export function City({ terrain }: { terrain: Terrain }) {
         det.position.set(0, 1.5, Math.max(13, 50 * 0.3) - 12 / 2 - 0.71)
         g.add(det)
       }
-      const [x, z] = terrain.toLocal(l.lat, l.lon)
+      const yaw = THREE.MathUtils.degToRad(l.rotation ?? 0)
+      let [x, z] = terrain.toLocal(l.lat, l.lon)
+      // builderOpts.back: set the model back from the mapped point along its own axis, so a
+      // street-facing monument (the Nymphaeum of the Tritons) stands beside the plateia, not on it
+      const back = Number(l.builderOpts?.back ?? 0)
+      if (back) { x -= Math.sin(yaw) * back; z -= Math.cos(yaw) * back }
       const box = new THREE.Box3().setFromObject(g)
       const r = Math.max(box.max.x - box.min.x, box.max.z - box.min.z) * 0.35
-      const yaw = THREE.MathUtils.degToRad(l.rotation ?? 0)
       g.position.set(x, l.builderOpts?.sink !== undefined ? terrain.heightAt(x, z) - Number(l.builderOpts.sink) : groundUnder(terrain, x, z, r), z)
       g.rotation.y = yaw
-      registerFootprint(box, x, z, yaw)
+      registerFootprint(box, x, z, yaw, l.id, l.built, l.until)
       g.userData.landmark = l.id
       shadowAll(g)
       out.push({ obj: g, built: l.built, until: l.until, id: l.id, flatten: true })
+    }
+    // the Sacred Pool basin (built by Water): keep houses and the crowd out of it
+    const pool = LANDMARKS.find((l) => l.id === 'antique-pool')
+    if (pool) {
+      const [px, pz] = terrain.toLocal(pool.lat, pool.lon)
+      registerFootprint(new THREE.Box3(new THREE.Vector3(-17, 0, -13.5), new THREE.Vector3(17, 3, 13.5)), px, pz, 0, pool.id, pool.built, pool.until)
     }
     // colonnaded streets
     for (const st of PLAN.streets.filter((s) => s.colonnade)) {
@@ -251,9 +261,15 @@ export function City({ terrain }: { terrain: Terrain }) {
         for (let k = 0; k < parts; k++) {
           const t0 = k / parts, t1 = (k + 1) / parts
           const cx = ax + (bx - ax) * (t0 + t1) / 2, cz = az + (bz - az) * (t0 + t1) / 2
-          const g = createColonnadedStreet({ length: len / parts + 0.5 })
+          const ry = Math.atan2(bx - ax, bz - az), cr = Math.cos(ry), sr = Math.sin(ry)
+          // leave the shop wall out where a monument stands right behind the portico (it opens onto the street)
+          const open = (lx: number, lz: number) => {
+            const wx = cx + lx * cr + lz * sr, wz = cz - lx * sr + lz * cr
+            return MONUMENT_FOOTPRINTS.some((f) => f.contains(wx, wz, 0.8))
+          }
+          const g = createColonnadedStreet({ length: len / parts + 0.5, open })
           g.position.set(cx, terrain.heightAt(cx, cz) - 0.3, cz)
-          g.rotation.y = Math.atan2(bx - ax, bz - az)
+          g.rotation.y = ry
           shadowAll(g)
           out.push({ obj: g, built: st.built ?? 80, until: st.until, flatten: true })
         }

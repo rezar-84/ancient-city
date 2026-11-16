@@ -36,7 +36,7 @@ export class WorldProbe {
       root.updateWorldMatrix(true, true)
       root.traverse((o) => {
         const m = o as THREE.Mesh
-        if (!m.isMesh || !m.geometry) return
+        if (!m.isMesh || !m.geometry || m.userData.noCollide) return
         const g = m.geometry
         if (!g.boundingSphere) g.computeBoundingSphere()
         if (!(m as THREE.InstancedMesh).isInstancedMesh && !g.boundsTree && g.attributes.position.count > 60) g.computeBoundsTree()

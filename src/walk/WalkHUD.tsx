@@ -42,6 +42,7 @@ export function WalkHUD() {
   const [moved, setMoved] = useState(false)
   const dot = useRef<HTMLDivElement>(null)
   const ribbon = useRef<HTMLDivElement>(null)
+  const tint = useRef<HTMLDivElement>(null)
   const active = mode === 'walk'
 
   useEffect(() => {
@@ -64,6 +65,7 @@ export function WalkHUD() {
           dot.current.style.transform = `translate(-50%,-50%) rotate(${heading}deg)`
         }
         if (ribbon.current) ribbon.current.style.transform = `translateX(${-heading * 2}px)`
+        if (tint.current) tint.current.style.opacity = walk.underwater ? '1' : '0'
         // nearest standing monument within reach
         let best: string | null = null, bd = 70
         for (const l of LANDMARKS) {
@@ -102,6 +104,8 @@ export function WalkHUD() {
 
   return (
     <div className="pointer-events-none absolute inset-0 z-20 select-none">
+      {/* below the waterline: turquoise travertine water */}
+      <div ref={tint} aria-hidden="true" className="absolute inset-0 opacity-0 transition-opacity duration-200" style={{ background: 'radial-gradient(ellipse at 50% 30%, rgba(120,210,205,0.35), rgba(20,90,100,0.6))', backdropFilter: 'blur(2px)' }} />
       {/* character */}
       <div className="glass pointer-events-auto absolute left-2.5 top-[max(0.625rem,env(safe-area-inset-top))] flex items-center gap-2.5 rounded-full py-1 pl-1 pr-4 sm:left-4 sm:top-4">
         <img src={c.portrait} alt="" className="h-10 w-10 rounded-full object-cover object-top ring-2 ring-gold/70" />

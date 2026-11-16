@@ -4,6 +4,7 @@ import * as THREE from 'three'
 import type { Terrain } from '../scene/terrainData'
 import { GRID } from '../content/grid'
 import { LANDMARKS } from '../content/landmarks'
+import { solidMonumentAt } from '../scene/footprints'
 import { CHARACTERS } from '../content/characters'
 import { useApp, walkInputBlocked } from '../store'
 import { createCartGeometry, createCrowdAttributes, createHorseGeometry, createPersonGeometry, ERA_PALETTES, patchCrowdMaterial, SKIN_TONES } from './npcGeometry'
@@ -64,13 +65,15 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
     const rand = rng(85 + variant.length)
     const npcs: Npc[] = []
     const yr = mode === 'walk' || mode === 'plan' ? year : 200
+    const spawnYr = mode === 'walk' || mode === 'plan' ? year : null
     const stands = (id: string) => { const l = LANDMARKS.find((x) => x.id === id); return !!l && yr >= l.built && (l.until === undefined || yr <= l.until) }
     const at = (id: string) => { const l = LANDMARKS.find((x) => x.id === id)!; return terrain.toLocal(l.lat, l.lon) }
     const pop = variant === 'roman' ? 1 : 0.65
     const nWalk = Math.round(240 * pop), nCross = Math.round(70 * pop)
     for (let i = 0; i < nWalk; i++) {
       const lane = [-9.5, -6, -2.2, 2.2, 6, 9.5][Math.floor(rand() * 6)]
-      const uu = rand() < 0.45 ? 15 + rand() * 280 : 20 + rand() * (F.L - 40)
+      let uu = 0
+      for (let k = 0; k < 8; k++) { uu = rand() < 0.45 ? 15 + rand() * 280 : 20 + rand() * (F.L - 40); if (!solidMonumentAt(...F.P(uu, lane), spawnYr, 1)) break }
       npcs.push({ kind: 'walker', u: uu, v: lane + (rand() - 0.5), dir: rand() < 0.5 ? 1 : -1, speed: 1.0 + rand() * 0.45, min: 12, max: F.L - 12, side: 0, phase: rand() * 6.28, pose: 0, look: 0 })
     }
     for (let i = 0; i < nCross; i++) {
@@ -80,7 +83,11 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
     // chatting groups: agora edge and around the nymphaeum
     const groupAt = (cx: number, cz: number, n: number) => {
       for (let g = 0; g < n; g++) {
-        const gx = cx + (rand() - 0.5) * 50, gz = cz + (rand() - 0.5) * 50, size = 2 + Math.floor(rand() * 3)
+        // never inside a monument (the nymphaeum basin, temple cella…): resample a few times, else skip
+        let gx = 0, gz = 0, ok = false
+        for (let k = 0; k < 12 && !ok; k++) { gx = cx + (rand() - 0.5) * 60; gz = cz + (rand() - 0.5) * 60; ok = !solidMonumentAt(gx, gz, spawnYr, 2) }
+        if (!ok) continue
+        const size = 2 + Math.floor(rand() * 3)
         for (let m = 0; m < size; m++) {
           const a = (m / size) * Math.PI * 2 + rand() * 0.4, r = 0.9 + rand() * 0.3
           const x = gx + Math.cos(a) * r, z = gz + Math.sin(a) * r
@@ -187,6 +194,7 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
     if (!visible) return
     if (mode === 'walk' && walkInputBlocked(useApp.getState())) return
     const dt = Math.min(rawDt, 0.1); clock.current += dt
+    const simYear = mode === 'walk' ? year : null
     const { F, npcs, carts, people, horses, cartMesh, pAttr, hAttr, cAttr, mats } = sim
     for (const m of mats) (m.userData.uTime as { value: number }).value = clock.current
     const walking = mode === 'walk'
@@ -196,6 +204,10 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
       if (n.kind === 'walker' || n.kind === 'cross') {
         if (n.kind === 'cross') { n.v += n.dir * n.speed * dt; if (n.v > n.max || n.v < n.min) n.dir *= -1 }
         else { n.u += n.dir * n.speed * dt; if (n.u > n.max || n.u < n.min) n.dir *= -1 }
+        // turn back before walking into a monument (look 0.8 m ahead)
+        const ahead = n.dir * 0.8
+        const [ax, az] = n.kind === 'cross' ? F.P(n.u, n.v + ahead + n.side) : F.P(n.u + ahead, n.v + n.side)
+        if (solidMonumentAt(ax, az, simYear)) n.dir *= -1
         ;[x, z] = F.P(n.u, n.v + n.side)
         // step aside for the player
         if (walking) {

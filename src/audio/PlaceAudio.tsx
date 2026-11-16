@@ -109,15 +109,17 @@ export function PlaceAudio() {
   // walk mode: footsteps by surface, landing thud
   useEffect(() => {
     let alt = 0
-    const step = (surf: 'stone' | 'gravel' | 'grass', k: number) => {
+    const step = (surf: 'stone' | 'gravel' | 'grass' | 'water', k: number) => {
       alt = 1 - alt
       playOneShot(`step-${surf}-${1 + Math.floor(Math.random() * 4)}`, 'places', 0.55 * k, alt ? 0.12 : -0.12, 0.92 + Math.random() * 0.16)
     }
     const land = (v: number) => playOneShot('land', 'places', Math.min(1, 0.4 + v / 10))
     const jump = () => playOneShot(`step-${walk.surface}-1`, 'places', 0.25, 0, 1.12)
+    const splash = (k: number) => playOneShot('splash', 'places', 0.35 + 0.5 * k)
+    const stroke = () => playOneShot(`swim-${1 + Math.floor(Math.random() * 2)}`, 'places', 0.45, 0, 0.94 + Math.random() * 0.12)
     walk.onJump.add(jump)
-    walk.onStep.add(step); walk.onLand.add(land)
-    return () => { walk.onJump.delete(jump); walk.onStep.delete(step); walk.onLand.delete(land) }
+    walk.onStep.add(step); walk.onLand.add(land); walk.onSplash.add(splash); walk.onStroke.add(stroke)
+    return () => { walk.onJump.delete(jump); walk.onStep.delete(step); walk.onLand.delete(land); walk.onSplash.delete(splash); walk.onStroke.delete(stroke) }
   }, [])
 
   // event sounds

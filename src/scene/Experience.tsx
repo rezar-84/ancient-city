@@ -14,6 +14,7 @@ import { TodayTiles } from './TodayTiles'
 import { computeSky, SKY } from './sky'
 import { isLight } from './quality'
 import Torches from './Torches'
+import Water from './Water'
 import { PloutonionMist, SkyDome, patchFogChunks } from './Effects'
 import { sceneUniforms } from './Terrain'
 import { PlanInk } from './PlanInk'
@@ -45,6 +46,7 @@ function World() {
       <CityDetails terrain={data} />
       <Crowd terrain={data} />
       <Torches terrain={data} />
+      <Water terrain={data} />
       {!walking && <Pins terrain={data} />}
       <PloutonionMist terrain={data} />
       <PlanInk terrain={data} />
@@ -238,7 +240,7 @@ export function Experience() {
       dpr={fixedDpr ?? Math.max(0.65, dpr * (moving ? 0.8 : 1))}
       gl={{ antialias: true, powerPreference: 'high-performance', alpha: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.0 }}
       camera={{ position: [-1600, 1100, 1500], fov: 42, near: 2, far: 30000 }}
-      onCreated={({ gl, scene }) => { if (import.meta.env.DEV) { (window as unknown as { __gl: unknown }).__gl = gl; installCapture(gl, scene) } }}
+      onCreated={({ gl, scene }) => { if (import.meta.env.DEV) { (window as unknown as { __gl: unknown; __scene: unknown }).__gl = gl; (window as unknown as { __scene: unknown }).__scene = scene; installCapture(gl, scene) } }}
       onPointerMissed={() => useApp.getState().mode !== 'tour' && useApp.getState().select(null)}
     >
       <PerformanceMonitor

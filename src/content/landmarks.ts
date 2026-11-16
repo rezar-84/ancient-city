@@ -141,7 +141,7 @@ const base: Landmark[] = [
       tr: ['Frontinus Caddesi’ne bakan yaklaşık 60 m uzunluğunda cephe', 'Arşitrav yazıtıyla İmparator Severus Alexander dönemine (MS 222–235) tarihlenir', 'Adını Triton kabartmalarından alır'],
     },
     images: [], sources: [{ title: 'Turkish Archaeological News — Hierapolis', url: 'https://turkisharchaeonews.net/site/hierapolis' }],
-    builder: 'nymphaeum', rotation: -60, view: { bearing: 250, elev: 18, dist: 120 },
+    builder: 'nymphaeum', rotation: 120, builderOpts: { back: 23 }, view: { bearing: 60, elev: 18, dist: 120 },
   },
   {
     id: 'baths',

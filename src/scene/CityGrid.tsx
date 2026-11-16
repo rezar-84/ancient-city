@@ -4,6 +4,7 @@ import { Html } from '@react-three/drei'
 import * as THREE from 'three'
 import type { Terrain } from './terrainData'
 import { PLAN } from '../content/plan'
+import { LANDMARKS } from '../content/landmarks'
 import { GRID } from '../content/grid'
 import { RUINS, RUIN_LABELS } from '../content/ruins'
 import { getMaterials } from './materials'
@@ -278,6 +279,8 @@ function buildCity(t: Terrain): Built {
 
   // OSM-mapped ruins (houses, gymnasium, nymphaea…) raised as simple masses, unless a detailed model stands there
   const ruinGeos: THREE.BufferGeometry[] = []
+  const poolL = LANDMARKS.find((l) => l.id === 'antique-pool')
+  const [poolX, poolZ] = poolL ? t.toLocal(poolL.lat, poolL.lon) : [1e9, 1e9]
   for (const r of RUINS) {
     if (!r.c || r.k !== 'ruin') continue
     const pts = r.p.map(toL)
@@ -286,6 +289,8 @@ function buildCity(t: Terrain): Built {
     for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) area += (pts[j][0] + pts[i][0]) * (pts[j][1] - pts[i][1])
     area = Math.abs(area / 2)
     if (area > 9000 || area < 40 || MONUMENT_FOOTPRINTS.some((f) => f.contains(cx, cz, 4))) continue
+    // never fill the Sacred Pool basin (its spring rises in the open)
+    if (pts.some(([x, z]) => Math.hypot(x - poolX, z - poolZ) < 22) || Math.hypot(cx - poolX, cz - poolZ) < 30) continue
     const base = Math.min(...pts.map(([x, z]) => t.heightAt(x, z)))
     const h = area > 2500 ? 9 : 6.5
     const shape = new THREE.Shape(pts.map(([x, z]) => new THREE.Vector2(x, -z)))

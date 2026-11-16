@@ -133,3 +133,4 @@ export function FastTravel() {
     </div>
   )
 }
+if (import.meta.env.DEV) (window as unknown as { __travel: typeof travelTo }).__travel = travelTo

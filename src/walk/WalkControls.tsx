@@ -9,12 +9,16 @@ import { CHARACTERS } from '../content/characters'
 import { GRID } from '../content/grid'
 import { WorldProbe } from './physics'
 import { sceneUniforms } from '../scene/Terrain'
+import { waterHere } from '../scene/Water'
+import { addRipple } from '../scene/water'
 
 const EYE = 1.62, RADIUS = 0.35, STEP = 0.45
 const SPEED = { walk: 2.0, run: 4.6, sprint: 7.5 }
 const GRAVITY = 18, JUMP_V = 5.4, COYOTE = 0.12, BUFFER = 0.15
+/** water: wade above 0.3 m (slower), swim once the floor is deeper than 1.1 m; swimmers float chest-deep */
+const WADE = 0.3, SWIM = 1.1, FLOAT = 1.25, SWIM_SPEED = { walk: 1.3, run: 1.8, sprint: 2.2 }
 
-export type Surface = 'stone' | 'gravel' | 'grass'
+export type Surface = 'stone' | 'gravel' | 'grass' | 'water'
 
 /** shared walk state (read by the HUD, crowd, avatar and sound) */
 export const walk = {
@@ -29,6 +33,13 @@ export const walk = {
   locked: false,
   waveUntil: 0,
   surface: 'stone' as Surface,
+  /** water state at the walker: none, wading or swimming; waterY = surface height when in water */
+  water: 'none' as 'none' | 'wade' | 'swim',
+  waterY: 0,
+  /** camera below the water surface (HUD tint, muffled sound) */
+  underwater: false,
+  onSplash: new Set<(k: number) => void>(),
+  onStroke: new Set<() => void>(),
   /** listeners: footstep (surface, intensity) and landing (fall speed) */
   onStep: new Set<(s: Surface, k: number) => void>(),
   onJump: new Set<() => void>(),
@@ -253,14 +264,18 @@ export function WalkControls() {
     const len = Math.min(1.25, Math.hypot(f, r))
     const joyEdge = Math.hypot(walk.joy.x, walk.joy.y) > 0.95
     walk.gait = S.sprintLatch || joyEdge ? 'sprint' : keys.has('shift') ? 'run' : 'walk'
-    const target = len > 0.05 ? SPEED[walk.gait] * walk.speedMul * Math.min(1, len) : 0
+    const here = waterHere(walk.x, walk.z)
+    const sub = here ? here.surface - walk.feet : 0
+    const swimming = walk.water === 'swim'
+    const base = swimming ? SWIM_SPEED[walk.gait] : SPEED[walk.gait] * (sub > WADE ? THREE.MathUtils.lerp(0.75, 0.45, Math.min(1, (sub - WADE) / 0.7)) : 1)
+    const target = len > 0.05 ? base * walk.speedMul * Math.min(1, len) : 0
     const sx = Math.sin(walk.yaw), cz = Math.cos(walk.yaw)
     let wx = 0, wz = 0
     if (len > 0.05) {
       wx = ((-sx * f) + (cz * r)) / Math.hypot(f, r) * target
       wz = ((-cz * f) + (-sx * r)) / Math.hypot(f, r) * target
     }
-    const accel = walk.grounded ? 12 : 2.5
+    const accel = swimming ? 3 : walk.grounded ? 12 : 2.5
     walk.vx += (wx - walk.vx) * Math.min(1, accel * dt)
     walk.vz += (wz - walk.vz) * Math.min(1, accel * dt)
 
@@ -268,7 +283,8 @@ export function WalkControls() {
     if (walk.jumpPressed) { S.buffer = BUFFER; walk.jumpPressed = false }
     S.buffer = Math.max(0, S.buffer - dt)
     S.coyote = walk.grounded ? COYOTE : Math.max(0, S.coyote - dt)
-    if (S.buffer > 0 && S.coyote > 0) { walk.vy = JUMP_V; walk.grounded = false; S.buffer = 0; S.coyote = 0; walk.onJump.forEach(cb => cb()) }
+    if (swimming && S.buffer > 0) { walk.vy = 3.2; S.buffer = 0 } // kick up: climb out over the edge
+    else if (S.buffer > 0 && S.coyote > 0) { walk.vy = JUMP_V; walk.grounded = false; S.buffer = 0; S.coyote = 0; walk.onJump.forEach(cb => cb()) }
 
     // ---- horizontal move with wall sliding (knee + chest rays) and step-up
     const beforeX = walk.x, beforeZ = walk.z
@@ -285,7 +301,10 @@ export function WalkControls() {
       const hb = t.meta.widthM * 0.48, hd = t.meta.depthM * 0.48
       const tryMove = (x: number, z: number) => {
         if (Math.abs(x) > hb || Math.abs(z) > hd || houses.current(x, z)) return false
-        const terrainY = t.heightAt(x, z)
+        const w = waterHere(x, z)
+        const terrainY = w ? w.surface - w.depth : t.heightAt(x, z)
+        // a swimmer can haul out over a coping up to 1.5 m above the feet
+        if (swimming && terrainY - walk.feet < 1.5 && probe.ground(x, z, walk.feet + 2.4) < walk.feet + 1.5) return true
         if (walk.grounded && terrainY - walk.feet > STEP + 0.2 && terrainY - walk.feet > Math.hypot(x - walk.x, z - walk.z) * 1.2) return false // cliff
         const top = probe.ground(x, z, walk.feet + 2.4)
         return top <= walk.feet + (walk.grounded ? STEP : Math.max(STEP, walk.vy > 0 ? 0.9 : 0.25))
@@ -297,17 +316,36 @@ export function WalkControls() {
     }
 
     // ---- vertical: support = terrain or a monument surface within step reach
-    const terrainY = t.heightAt(walk.x, walk.z)
+    const w = waterHere(walk.x, walk.z)
+    const terrainY = w ? w.surface - w.depth : t.heightAt(walk.x, walk.z)
     const solidY = probe.ground(walk.x, walk.z, walk.feet + STEP + 0.05)
-    const support = Math.max(terrainY, solidY)
+    let support = Math.max(terrainY, solidY)
     if (walk.vy > 0) {
       const ceiling = probe.ceiling(walk.x, walk.z, walk.feet + 1.68, walk.vy * dt + 0.05)
       if (ceiling < Infinity) walk.vy = 0
     }
-    walk.vy -= GRAVITY * dt
+    // ---- water: swimmers float chest-deep (spring towards the float line); deep water lets you swim
+    const prevWater = walk.water
+    if (w && w.depth > SWIM && w.surface - walk.feet > SWIM - 0.05) walk.water = 'swim'
+    else if (w && w.surface - walk.feet > 0.05) walk.water = 'wade'
+    else walk.water = 'none'
+    walk.waterY = w ? w.surface : 0
+    if (walk.water === 'swim') {
+      const floatY = w!.surface - FLOAT
+      if (walk.vy <= 0 || walk.feet > floatY + 0.6) walk.vy += ((floatY - walk.feet) * 9 - walk.vy * 3.5) * dt
+      else walk.vy -= GRAVITY * 0.5 * dt
+      support = Math.min(support, floatY - 0.2)
+    } else walk.vy -= GRAVITY * dt
+    if (prevWater === 'none' && walk.water !== 'none' && w) {
+      const k = Math.min(1, 0.3 + Math.max(0, -walk.vy) * 0.12)
+      walk.onSplash.forEach((cb) => cb(k)); addRipple(walk.x, walk.z, k)
+    }
     let feet = walk.feet + walk.vy * dt
     const wasAir = !walk.grounded
-    if (feet <= support) {
+    if (walk.water === 'swim') {
+      walk.grounded = false
+      if (feet < support) feet = support
+    } else if (feet <= support) {
       if (wasAir && walk.vy < -3) { S.dip = Math.min(0.22, -walk.vy * 0.03); walk.onLand.forEach((cb) => cb(-walk.vy)) }
       feet = support
       walk.vy = 0; walk.grounded = true
@@ -318,20 +356,32 @@ export function WalkControls() {
     walk.feet = feet
 
     // ---- surface + footsteps
-    walk.surface = solidY >= terrainY - 0.05 && solidY > -Infinity ? 'stone' : onStreet(walk.x, walk.z) ? 'stone' : inCity(walk.x, walk.z, t) ? 'gravel' : 'grass'
+    walk.surface = walk.water !== 'none' ? 'water' : solidY >= terrainY - 0.05 && solidY > -Infinity ? 'stone' : onStreet(walk.x, walk.z) ? 'stone' : inCity(walk.x, walk.z, t) ? 'gravel' : 'grass'
     const hs = Math.hypot(walk.x - beforeX, walk.z - beforeZ) / Math.max(dt, 0.0001)
     walk.speed = hs; walk.moving = hs > 0.3
-    if (walk.grounded && walk.moving) {
+    if (walk.water === 'swim') {
+      // a breaststroke every ~1.1 s while moving; slow treading bob when still
+      const prev = S.stepPhase
+      S.stepPhase += dt * (walk.moving ? 0.9 : 0.45)
+      if (Math.floor(S.stepPhase) !== Math.floor(prev)) {
+        if (walk.moving) walk.onStroke.forEach((cb) => cb())
+        addRipple(walk.x, walk.z, walk.moving ? 0.6 : 0.25)
+      }
+      S.bob += dt * 2.2
+    } else if (walk.grounded && walk.moving) {
       const cadence = 1.55 + hs * 0.32 // steps per second
       const prev = S.stepPhase
       S.stepPhase += dt * cadence
-      if (Math.floor(S.stepPhase) !== Math.floor(prev)) walk.onStep.forEach((cb) => cb(walk.surface, Math.min(1, 0.45 + hs / 8)))
+      if (Math.floor(S.stepPhase) !== Math.floor(prev)) {
+        walk.onStep.forEach((cb) => cb(walk.surface, Math.min(1, 0.45 + hs / 8)))
+        if (walk.water === 'wade') addRipple(walk.x, walk.z, 0.45)
+      }
       S.bob += dt * cadence * Math.PI
     }
 
     // ---- camera
     S.dip *= Math.exp(-dt * 7)
-    const bobAmp = walk.grounded && walk.moving ? Math.min(0.06, 0.018 + hs * 0.006) : 0
+    const bobAmp = walk.water === 'swim' ? 0.035 : walk.grounded && walk.moving ? Math.min(0.06, 0.018 + hs * 0.006) : 0
     const eyeY = walk.feet + EYE - S.dip + Math.sin(S.bob * 2) * bobAmp
     euler.set(walk.pitch, walk.yaw, 0)
     camera.quaternion.setFromEuler(euler)
@@ -346,6 +396,7 @@ export function WalkControls() {
     // keep the third-person camera above ground
     const camGround = t.heightAt(camera.position.x, camera.position.z) + 0.3
     if (camera.position.y < camGround) camera.position.y = camGround
+    walk.underwater = walk.water !== 'none' && camera.position.y < walk.waterY - 0.02
   })
   return null
 }

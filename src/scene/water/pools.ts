@@ -69,7 +69,7 @@ function geometry(p: number[], idx: number[], uv: number[]) {
   g.setIndex(idx); g.computeVertexNormals(); return g;
 }
 /** Radial mesh has closely paired rings at entry steps, with depth shared by floor and water. */
-function basin(v: WaterVolume, cx: number, cz: number, depth: number, stone: Building) {
+function basin(v: WaterVolume, cx: number, cz: number, depth: number, stone: Building, skirtY = v.floorY - 0.15) {
   const p: number[] = [], fp: number[] = [], uv: number[] = [], depths: number[] = [], idx: number[] = [];
   const rings = v.kind === 'pool' ? [0, 0.25, 0.5, 0.65, 0.651, 0.78, 0.781, 0.9, 0.901, 0.97, 1] : [0, 0.5, 0.9, 0.97, 1];
   const n = v.polygon.length;
@@ -87,7 +87,7 @@ function basin(v: WaterVolume, cx: number, cz: number, depth: number, stone: Bui
   // Continuous curved coping, outer skirt down to the basin floor.
   const rp: number[] = [], ri: number[] = [], ru: number[] = [];
   v.polygon.forEach(([x, z], i) => {
-    for (const [r, y] of [[1, v.surfaceY - 0.025], [1.025, v.surfaceY + 0.12], [1.065, v.surfaceY + 0.1], [1.065, v.floorY - 0.15]]) {
+    for (const [r, y] of [[1, v.surfaceY - 0.025], [1.025, v.surfaceY + 0.12], [1.065, v.surfaceY + 0.1], [1.065, skirtY]]) {
       rp.push(cx + (x - cx) * r, y, cz + (z - cz) * r); ru.push(i / n, r);
     }
     for (let k = 0; k < 3; k++) { const a = i * 4 + k, b = ((i + 1) % n) * 4 + k; ri.push(a, b, a + 1, a + 1, b, b + 1); }
@@ -168,10 +168,13 @@ export function buildWater(t: Terrain): { group: THREE.Group; volumes: WaterVolu
     // Long axes follow the north/south contour; descent is WEST (-X).
     const x = tx + 20 - row * 8, z = tz + (col - 2.5) * 18 + (row % 2) * 2;
     const poly = polygon(x, z, 3.6, 8, row * 0.7 + col), depth = 0.2 + ((row * 7 + col * 3) % 11) * 0.05;
-    const ground = Math.max(t.heightAt(x, z), ...poly.map(([a, b]) => t.heightAt(a, b)));
+    const rimH = poly.map(([a, b]) => t.heightAt(a, b))
+    const ground = Math.max(t.heightAt(x, z), ...rimH);
+    // the outer wall reaches down to the lowest ground round the rim, so basins never float on the slope
+    const skirt = Math.min(...rimH) - 0.3;
     const surfaceY = ground + depth + 0.03;
     const v: WaterVolume = { id: `travertine-${row}-${col}`, kind: 'terrace', polygon: poly, surfaceY, floorY: surfaceY - depth };
-    volumes.push(v); terraces.push(basin(v, x, z, depth, stone));
+    volumes.push(v); terraces.push(basin(v, x, z, depth, stone, skirt));
     if (row > 0 && col % 2 === 0) {
       const upper = volumes[1 + (row - 1) * 6 + col];
       const drop = upper.surfaceY - surfaceY;

@@ -41,9 +41,12 @@ const STEP_PROMPT = {
   stone: 'a single footstep of a leather sandal on smooth limestone paving, close, dry, short',
   gravel: 'a single footstep of a leather sandal on gravel and packed dirt, close, short crunch',
   grass: 'a single soft footstep on dry grass and earth, close, short rustle',
+  water: 'a single footstep wading through knee-deep warm pool water, gentle slosh and splash, close, short',
 }
-for (const surf of ['stone', 'gravel', 'grass'] as const)
+for (const surf of ['stone', 'gravel', 'grass', 'water'] as const)
   for (let i = 1; i <= 4; i++) BEDS.push({ id: `step-${surf}-${i}`, seconds: 0.5, loop: false, prompt: STEP_PROMPT[surf] + (i > 1 ? `, variation ${i}` : '') })
+BEDS.push({ id: 'splash', seconds: 1.2, loop: false, prompt: 'a person stepping and dropping into a calm outdoor stone pool, one soft splash then water settling, close, natural' })
+for (let i = 1; i <= 2; i++) BEDS.push({ id: `swim-${i}`, seconds: 1.1, loop: false, prompt: 'one slow breaststroke swimming stroke in calm warm water, gentle swish and drip, close, quiet' + (i > 1 ? ', variation 2' : '') })
 BEDS.push({ id: 'land', seconds: 0.6, loop: false, prompt: 'a person landing on both feet after a small jump onto stone, soft thud with sandal slap, close, short' })
 
 export const VOICES: VoiceLine[] = [

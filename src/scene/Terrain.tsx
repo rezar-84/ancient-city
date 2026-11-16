@@ -12,6 +12,8 @@ export const sceneUniforms = {
   uTime: { value: 0 },
   /** 1 in walk mode: procedural ground replaces the magnified satellite photo near the eye */
   uWalk: { value: 0 },
+  /** ellipse cut out of the ground for the Sacred Pool basin (cx, cz, rx, rz); rx = 0 disables */
+  uHole: { value: new THREE.Vector4(0, 0, 0, 0) },
 }
 
 /** Terrain heights as a small half-float texture, so building shaders know their height above ground
@@ -65,6 +67,7 @@ export function Terrain({ data }: { data: TerrainData }) {
       shader.uniforms.uPlan = sceneUniforms.uPlan
       shader.uniforms.uTime = sceneUniforms.uTime
       shader.uniforms.uWalk = sceneUniforms.uWalk
+      shader.uniforms.uHole = sceneUniforms.uHole
       shader.uniforms.uMapAncient = { value: texAncient }
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', '#include <common>\nvarying vec3 vWPos;')
@@ -76,6 +79,7 @@ uniform float uAncient;
 uniform float uPlan;
 uniform float uTime;
 uniform float uWalk;
+uniform vec4 uHole;
 uniform sampler2D uMapAncient;
 float tBump = 0.0;
 float tRough = 1.0;
@@ -87,6 +91,7 @@ float contour(float h, float step, float w) {
   return 1.0 - smoothstep(0.0, w, f);
 }`)
         .replace('#include <map_fragment>', `#include <map_fragment>
+if (uHole.z > 0.0 && uPlan < 0.5) { vec2 hq = (vWPos.xz - uHole.xy) / uHole.zw; if (dot(hq, hq) < 1.0) discard; }
 {
   vec3 c = diffuseColor.rgb;
   // ancient: modern buildings/roads/pools painted out (sat_ancient), warm painterly grade, travertine whites lifted
