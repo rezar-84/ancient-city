@@ -8,6 +8,24 @@
         "value": "inter",
         "createdAt": "2026-11-15T23:15:20.213Z",
         "reason": "Claude: Inter is the project's established sans (tailwind.config fontFamily.sans) used across the app UI; the print footer matches it for consistency"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "src/walk/WalkHUD.tsx"
+        ],
+        "createdAt": "2026-11-16T00:43:01.946Z",
+        "reason": "Claude: L130 is a CSS border-triangle position arrow on the mini-map, not a card side-tab"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "src/walk/FastTravel.tsx"
+        ],
+        "createdAt": "2026-11-16T00:43:01.981Z",
+        "reason": "Claude: L97 is a CSS border-triangle player-position arrow on the travel map, not a card side-tab"
       }
     ]
   }
