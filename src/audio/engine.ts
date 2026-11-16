@@ -170,6 +170,18 @@ export function playOneShot(id: string, layer: Layer, gain = 1, pan = 0, rate = 
   })
 }
 
+/** a positioned speech clip (NPC bark) on the voices layer */
+export function playBark(url: string, pan: number, gain = 1) {
+  if (!ctx || ctx.state !== 'running' || settings.voices <= 0) return
+  void load(url).then((buf) => {
+    if (!buf || !ctx) return
+    const src = ctx.createBufferSource(); src.buffer = buf
+    const g = ctx.createGain(); g.gain.value = gain
+    const p = ctx.createStereoPanner(); p.pan.value = Math.max(-0.9, Math.min(0.9, pan))
+    src.connect(g).connect(p).connect(bus.voices); src.start()
+  })
+}
+
 /** an occasional one-shot on the ambience layer (wind gust, distant birds) */
 export function playAmbientOneShot(id: 'gust' | 'birds', gain = 1) {
   if (!ctx || ctx.state !== 'running' || settings.ambience <= 0) return

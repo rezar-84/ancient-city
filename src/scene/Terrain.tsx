@@ -10,6 +10,8 @@ export const sceneUniforms = {
   uAncient: { value: 1 },
   uPlan: { value: 0 },
   uTime: { value: 0 },
+  /** 1 in walk mode: procedural ground replaces the magnified satellite photo near the eye */
+  uWalk: { value: 0 },
 }
 
 /** Terrain heights as a small half-float texture, so building shaders know their height above ground
@@ -62,6 +64,7 @@ export function Terrain({ data }: { data: TerrainData }) {
       shader.uniforms.uAncient = sceneUniforms.uAncient
       shader.uniforms.uPlan = sceneUniforms.uPlan
       shader.uniforms.uTime = sceneUniforms.uTime
+      shader.uniforms.uWalk = sceneUniforms.uWalk
       shader.uniforms.uMapAncient = { value: texAncient }
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', '#include <common>\nvarying vec3 vWPos;')
@@ -72,6 +75,7 @@ varying vec3 vWPos;
 uniform float uAncient;
 uniform float uPlan;
 uniform float uTime;
+uniform float uWalk;
 uniform sampler2D uMapAncient;
 float tBump = 0.0;
 float tRough = 1.0;
@@ -115,6 +119,24 @@ float contour(float h, float step, float w) {
   tBump += pool * (sin(q.x + uTime * 0.9 + sin(q.y * 0.6)) + sin(q.y * 1.2 - uTime * 0.7)) * 0.02 * (1.0 - smoothstep(200.0, 1600.0, dist));
   tRough = mix(mix(0.97, 0.62, trav), 0.08, pool);
   tRough = mix(tRough, 1.0, uPlan);
+  // walk mode: at eye level the 0.8 m/px photo is a smear, so paint a procedural ground of dry earth,
+  // grass patches and pebbles, keeping the photo's tint; travertine and pools are left as they are
+  float wk = uWalk * (1.0 - smoothstep(30.0, 140.0, dist)) * (1.0 - pool);
+  if (wk > 0.0) {
+    float g1 = tnoise(vWPos.xz * 0.07), g2 = tnoise(vWPos.xz * 0.55 + 3.0), g3 = tnoise(vWPos.xz * 2.7 - 5.0);
+    float g4 = mix(0.5, tnoise(vWPos.xz * 11.0 + 1.7), 1.0 - smoothstep(0.08, 0.3, px * 11.0));
+    vec3 dirt = vec3(0.55, 0.46, 0.35) * (0.86 + 0.28 * g2);
+    vec3 dry = vec3(0.62, 0.57, 0.37) * (0.82 + 0.36 * g3);
+    vec3 green = vec3(0.40, 0.45, 0.27) * (0.82 + 0.36 * g3);
+    float grassAmt = smoothstep(0.38, 0.72, g1 * 0.8 + g2 * 0.3 + (c.g - c.r) * 2.5);
+    vec3 ground = mix(dirt, mix(dry, green, smoothstep(0.45, 0.8, g2)), grassAmt);
+    ground *= 0.9 + 0.2 * g4;
+    ground = mix(ground, c * 1.05, 0.3);
+    ground = mix(ground, c, trav);
+    c = mix(c, ground, wk);
+    tBump = mix(tBump, (g3 * 0.5 + g4 * 0.5 - 0.5) * 0.18, wk);
+    tRough = mix(tRough, 0.95, wk * (1.0 - trav));
+  }
   float l = dot(c, vec3(0.299, 0.587, 0.114));
   // plan grade: parchment + contour lines (5 m minor, 25 m major)
   vec3 parch = vec3(0.937, 0.886, 0.769) * (0.82 + 0.25 * l);

@@ -8,6 +8,7 @@ import { GRID_AXES, HOUSE_RECTS, STREET_SEGS } from '../scene/CityGrid'
 import { CHARACTERS } from '../content/characters'
 import { GRID } from '../content/grid'
 import { WorldProbe } from './physics'
+import { sceneUniforms } from '../scene/Terrain'
 
 const EYE = 1.62, RADIUS = 0.35, STEP = 0.45
 const SPEED = { walk: 2.0, run: 4.6, sprint: 7.5 }
@@ -123,7 +124,9 @@ export function WalkControls() {
     const prev = { fov: cam.fov, near: cam.near }
     cam.fov = 70; cam.near = 0.08; cam.updateProjectionMatrix()
     if (rig.controls) rig.controls.enabled = false
+    sceneUniforms.uWalk.value = 1
     return () => {
+      sceneUniforms.uWalk.value = 0
       cam.fov = prev.fov; cam.near = prev.near; cam.updateProjectionMatrix()
       if (rig.controls) rig.controls.enabled = true
       if (document.pointerLockElement) void document.exitPointerLock()

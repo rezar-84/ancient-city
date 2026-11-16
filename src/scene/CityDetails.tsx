@@ -11,6 +11,8 @@ import { LANDMARKS } from '../content/landmarks'
 import { timeGated, useApp } from '../store'
 import { gridFrame, stallSpots } from '../walk/spots'
 import { onStreet, walk } from '../walk/WalkControls'
+import { FACADE_MODULES } from './generators/house'
+import { FACADE_PLACEMENTS } from './CityGrid'
 
 type Parts = PropParts | VegetationParts
 interface Place { x: number; z: number; yaw: number; s?: number }
@@ -143,13 +145,37 @@ export function CityDetails({ terrain }: { terrain: Terrain }) {
     im.frustumCulled = false; im.receiveShadow = true
     return im
   }, [])
+  // house facades near the walker (doors, windows, shop fronts, string courses, eaves, balconies)
+  const facades = useMemo(() => {
+    const mats = getMaterials() as unknown as Record<string, THREE.Material>
+    const CAP = 2600
+    return Object.entries(FACADE_MODULES).map(([name, parts]) => ({
+      name,
+      meshes: parts.map((p) => { const im = new THREE.InstancedMesh(p.geometry, mats[p.key], CAP); im.count = 0; im.castShadow = true; im.receiveShadow = true; im.frustumCulled = false; return im }),
+    }))
+  }, [])
+  const lastF = useRef({ x: 1e9, z: 1e9, n: -1 })
   const last = useRef({ x: 1e9, z: 1e9 })
   const clock = useRef(0)
   useFrame((_, dt) => {
     clock.current += dt
     ;(foliage.grass.userData.uTime as { value: number }).value = clock.current
-    if (mode !== 'walk') { grass.visible = false; return }
+    if (mode !== 'walk') { grass.visible = false; facades.forEach((f) => f.meshes.forEach((m) => { m.count = 0 })); lastF.current.n = -1; return }
     grass.visible = true
+    if (Math.hypot(walk.x - lastF.current.x, walk.z - lastF.current.z) > 15 || lastF.current.n !== FACADE_PLACEMENTS.length) {
+      lastF.current = { x: walk.x, z: walk.z, n: FACADE_PLACEMENTS.length }
+      const counts = new Map<string, number>()
+      const byName = new Map(facades.map((f) => [f.name, f.meshes]))
+      for (const pl of FACADE_PLACEMENTS) {
+        if (Math.abs(pl.x - walk.x) > 110 || Math.abs(pl.z - walk.z) > 110) continue
+        const ms = byName.get(pl.module); if (!ms) continue
+        const i = counts.get(pl.module) ?? 0
+        if (i >= ms[0].instanceMatrix.count) continue
+        for (const m of ms) m.setMatrixAt(i, pl.m)
+        counts.set(pl.module, i + 1)
+      }
+      for (const f of facades) for (const m of f.meshes) { m.count = counts.get(f.name) ?? 0; m.instanceMatrix.needsUpdate = true }
+    }
     if (Math.hypot(walk.x - last.current.x, walk.z - last.current.z) < 15) return
     last.current = { x: walk.x, z: walk.z }
     const rand = rng(Math.floor(walk.x) * 73856093 ^ Math.floor(walk.z) * 19349663)
@@ -168,6 +194,7 @@ export function CityDetails({ terrain }: { terrain: Terrain }) {
     <group visible={visible}>
       {meshes.map((m, i) => <primitive key={i} object={m} />)}
       <primitive object={grass} />
+      {facades.map((f) => f.meshes.map((m, i) => <primitive key={f.name + i} object={m} />))}
     </group>
   )
 }

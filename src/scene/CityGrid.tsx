@@ -9,6 +9,7 @@ import { RUINS, RUIN_LABELS } from '../content/ruins'
 import { getMaterials } from './materials'
 import { sceneUniforms } from './Terrain'
 import { MONUMENT_FOOTPRINTS } from './footprints'
+import { layoutFacade } from './generators/house'
 import { timeGated, useApp } from '../store'
 import { rig } from './camera'
 
@@ -85,10 +86,13 @@ interface Built {
 export const HOUSE_RECTS: Array<{ x: number; z: number; hu: number; hv: number }> = []
 /** Paved street segments (for footstep surfaces) */
 export const STREET_SEGS: Array<{ a: [number, number]; b: [number, number]; w: number }> = []
+/** Facade module placements (doors, windows, shop fronts…) — instanced near the walker */
+export const FACADE_PLACEMENTS: Array<{ module: string; x: number; z: number; m: THREE.Matrix4 }> = []
 export const GRID_AXES = { u: [0, 1] as [number, number], v: [1, 0] as [number, number] }
 
 function buildCity(t: Terrain): Built {
   HOUSE_RECTS.length = 0
+  FACADE_PLACEMENTS.length = 0
   const mats = getMaterials()
   const toL = ([la, lo]: [number, number]): V2 => t.toLocal(la, lo)
   const [ax, az] = toL(GRID.axisFrom), [bx, bz] = toL(GRID.axisTo)
@@ -126,9 +130,13 @@ function buildCity(t: Terrain): Built {
   let pitch = 0.3
   /** a box aligned to the grid, given in (pu, pv) lot coordinates, with a roof on top.
    * shed roofs drain toward `drain` (one of +u, -u, +v, -v): the courtyard of a peristyle house. */
-  const wing = (cu: number, cv: number, lu: number, lv: number, h: number, base: number, roof: RoofKind | null, drain?: 'u+' | 'u-' | 'v+' | 'v-') => {
+  type Dir = 'u+' | 'u-' | 'v+' | 'v-'
+  const OPP: Record<Dir, Dir> = { 'u+': 'u-', 'u-': 'u+', 'v+': 'v-', 'v-': 'v+' }
+  const wing = (cu: number, cv: number, lu: number, lv: number, h: number, base: number, roof: RoofKind | null, drain?: Dir, front?: Dir, shop = false) => {
     const [x, z] = P(cu, cv)
     HOUSE_RECTS.push({ x, z, hu: lu / 2, hv: lv / 2 })
+    if (front) for (const f of layoutFacade({ x, z, yaw, length: lu, width: lv, height: h, base, storeys: h > 6.5 ? 2 : 1, front, shop }, rand))
+      FACADE_PLACEMENTS.push({ module: f.module, x, z, m: f.matrix })
     // grid-aligned: local z along u (length lu), local x along v (width lv)
     const sink = 1.5
     push(wallM, x, z, base - sink, lv, h + sink, lu)
@@ -193,7 +201,7 @@ function buildCity(t: Terrain): Built {
           houses++
           if (j === 0 && m === 0) {
             // tabernae: a row of shops opening onto the colonnaded main street, lean-to roofs draining to the street
-            wing(cu, side * (v0 + 3.5), iu, 6.5, 4.4, base, 'shed', side > 0 ? 'v-' : 'v+')
+            wing(cu, side * (v0 + 3.5), iu, 6.5, 4.4, base, 'shed', side > 0 ? 'v-' : 'v+', side > 0 ? 'v-' : 'v+', true)
             wing(cu, side * (v0 + 6.5 + (iv - 6.5) / 2 + 0.3), iu * 0.9, iv - 7.5, h, base, rand() < 0.5 ? 'hip' : 'gable')
           } else if (r < 0.75) {
             // peristyle / courtyard house: four wings round an open court; roofs either drain into the court
@@ -203,10 +211,10 @@ function buildCity(t: Terrain): Built {
             const inward = rand() < 0.6
             const k: RoofKind = inward ? 'shed' : 'gable'
             const hi = rand() < 0.3 ? 2.6 : 0 // a two-storey main wing
-            wing(cu - iu / 2 + d / 2, vv, d, iv, h + hi, base, k, 'u+')
-            wing(cu + iu / 2 - d / 2, vv, d, iv, h * 0.85, base, k, 'u-')
-            wing(cu, vv - (iv / 2 - d / 2), iu - 2 * d, d, h * 0.8, base, k, 'v+')
-            wing(cu, vv + (iv / 2 - d / 2), iu - 2 * d, d, h * 0.8, base, k, 'v-')
+            wing(cu - iu / 2 + d / 2, vv, d, iv, h + hi, base, k, 'u+', OPP['u+'])
+            wing(cu + iu / 2 - d / 2, vv, d, iv, h * 0.85, base, k, 'u-', OPP['u-'])
+            wing(cu, vv - (iv / 2 - d / 2), iu - 2 * d, d, h * 0.8, base, k, 'v+', OPP['v+'])
+            wing(cu, vv + (iv / 2 - d / 2), iu - 2 * d, d, h * 0.8, base, k, 'v-', OPP['v-'])
             const cuL = iu - 2 * d, cvL = iv - 2 * d
             if (cuL > 3 && cvL > 3) {
               const [x, z] = P(cu, vv)
@@ -223,7 +231,7 @@ function buildCity(t: Terrain): Built {
             // block house with a yard; often an L with a lower annex under a lean-to
             const bw = iu * (0.8 + rand() * 0.15), bv = iv * 0.7
             const bc = cv - side * dv * 0.12
-            wing(cu, bc, bw, bv, h, base, rand() < 0.55 ? 'hip' : 'gable')
+            wing(cu, bc, bw, bv, h, base, rand() < 0.55 ? 'hip' : 'gable', undefined, side > 0 ? 'v-' : 'v+')
             if (rand() < 0.5) {
               const sideU = rand() < 0.5 ? -1 : 1
               wing(cu + sideU * (bw / 2 - 2.2), bc + side * (bv / 2 + 2.4), 4.4, 4.8, h * 0.62, base, 'shed', side > 0 ? 'v+' : 'v-')

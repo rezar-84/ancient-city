@@ -5,6 +5,7 @@ import { PlaceAudio } from './audio/PlaceAudio'
 import { CharacterSelect } from './walk/CharacterSelect'
 import { WalkHUD } from './walk/WalkHUD'
 import { FastTravel } from './walk/FastTravel'
+import { WalkBarks } from './walk/WalkBarks'
 import { NavControls } from './ui/NavControls'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { Experience } from './scene/Experience'
@@ -95,6 +96,7 @@ export default function App() {
       <PlaceAudio />
       <WalkHUD />
       <FastTravel />
+      <WalkBarks />
       <CharacterSelect />
       <Hint />
       <Loader />
