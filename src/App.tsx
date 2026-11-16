@@ -2,6 +2,8 @@ import { LANDMARKS } from './content/landmarks'
 import { loadTerrain } from './scene/terrainData'
 import { focusLandmark } from './scene/Pins'
 import { PlaceAudio } from './audio/PlaceAudio'
+import { CharacterSelect } from './walk/CharacterSelect'
+import { WalkHUD } from './walk/WalkHUD'
 import { NavControls } from './ui/NavControls'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { Experience } from './scene/Experience'
@@ -90,6 +92,8 @@ export default function App() {
       <Viewpoints />
       <NavControls />
       <PlaceAudio />
+      <WalkHUD />
+      <CharacterSelect />
       <Hint />
       <Loader />
       <Keys />

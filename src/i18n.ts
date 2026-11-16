@@ -42,6 +42,7 @@ const STRINGS = {
   loading: { en: 'Raising the city from the travertine…', tr: 'Kent travertenden yükseliyor…' },
   hint: { en: 'Drag to orbit · right-drag to pan · scroll zooms to the cursor · double-click to fly there · WASD / arrows move · Q E rotate', tr: 'Döndürmek için sürükleyin · kaydırmak için sağ sürükleyin · imlece yakınlaştırmak için tekerlek · oraya uçmak için çift tıklayın · WASD / oklar hareket · Q E döndürür' },
   planHint: { en: 'Drag to move the map · right-drag to rotate · scroll to zoom · double-click to zoom in', tr: 'Haritayı taşımak için sürükleyin · döndürmek için sağ sürükleyin · yakınlaştırmak için tekerlek · yaklaşmak için çift tıklayın' },
+  walk: { en: 'Walk the city', tr: 'Kentte yürü' },
   wholeCity: { en: 'Whole city', tr: 'Tüm kent' },
   wholeCityTip: { en: 'Show the full street grid, houses and every mapped ruin', tr: 'Tüm sokak dokusunu, evleri ve haritalanmış tüm kalıntıları göster' },
   north: { en: 'Face north', tr: 'Kuzeye dön' },

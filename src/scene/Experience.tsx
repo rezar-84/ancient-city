@@ -14,6 +14,8 @@ import { HAZE, PloutonionMist, SkyDome, patchFogChunks } from './Effects'
 import { sceneUniforms } from './Terrain'
 import { PlanInk } from './PlanInk'
 import { Navigation } from './Navigation'
+import { WalkControls } from '../walk/WalkControls'
+import { Crowd } from '../walk/Crowd'
 import { installCapture } from './captureRenders'
 import { useApp } from '../store'
 import { useState } from 'react'
@@ -35,12 +37,14 @@ const SUN_DIR = new THREE.Vector3(-0.78, 0.42, 0.46).normalize()
 function World() {
   const data = use(terrainPromise)
   const era = useApp((s) => s.era)
+  const walking = useApp((s) => s.mode === 'walk')
   return (
     <>
       <Terrain data={data} />
       <City terrain={data} />
       <CityGrid terrain={data} />
-      <Pins terrain={data} />
+      <Crowd terrain={data} />
+      {!walking && <Pins terrain={data} />}
       <PloutonionMist terrain={data} />
       <PlanInk terrain={data} />
       {era === 'today' && <TodayTiles terrain={data} />}
@@ -135,7 +139,7 @@ function ModeCamera() {
     const [cx, cz] = t.toLocal(37.9282, 29.1258)
     const cy = t.heightAt(cx, cz)
     if (mode === 'plan') void flyTo([cx, cy + 1900, cz + 1], [cx, cy, cz], 2.2)
-    else if (mode === 'explore' && (from === 'intro' || from === 'plan' || from === 'tour'))
+    else if (mode === 'explore' && (from === 'intro' || from === 'plan' || from === 'tour' || from === 'walk' || from === 'choose'))
       void flyTo(orbitPose([cx, cy, cz], 235, 32, 1350), [cx, cy, cz], 2.6)
   }, [mode])
   return null
@@ -206,11 +210,12 @@ export function Experience() {
       <Suspense fallback={null}>
         <World />
       </Suspense>
-      {fx && mode !== 'plan' && <Suspense fallback={null}><PostFX /></Suspense>}
+      {fx && mode !== 'plan' && mode !== 'walk' && <Suspense fallback={null}><PostFX /></Suspense>}
       <GradeAnimator />
       <Controls />
       <IntroOrbit />
       <Navigation />
+      <WalkControls />
       <ModeCamera />
       {showPerf && <Stats />}
     </Canvas>

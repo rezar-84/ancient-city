@@ -9,7 +9,7 @@ import { RUINS, RUIN_LABELS } from '../content/ruins'
 import { getMaterials } from './materials'
 import { sceneUniforms } from './Terrain'
 import { MONUMENT_FOOTPRINTS } from './footprints'
-import { useApp } from '../store'
+import { timeGated, useApp } from '../store'
 import { rig } from './camera'
 
 type V2 = [number, number]
@@ -81,13 +81,19 @@ interface Built {
  * insula filled with courtyard houses, and OSM-mapped ruins raised as simple masses.
  * Generic and schematic by design (see GRID.note); monuments keep their own detailed models.
  */
+/** Footprints of generated house wings (grid-aligned: hu along the plateia axis, hv across), for walk-mode collisions. */
+export const HOUSE_RECTS: Array<{ x: number; z: number; hu: number; hv: number }> = []
+export const GRID_AXES = { u: [0, 1] as [number, number], v: [1, 0] as [number, number] }
+
 function buildCity(t: Terrain): Built {
+  HOUSE_RECTS.length = 0
   const mats = getMaterials()
   const toL = ([la, lo]: [number, number]): V2 => t.toLocal(la, lo)
   const [ax, az] = toL(GRID.axisFrom), [bx, bz] = toL(GRID.axisTo)
   const L = Math.hypot(bx - ax, bz - az)
   const u: V2 = [(bx - ax) / L, (bz - az) / L]
   const v: V2 = [u[1], -u[0]] // +v = east-north-east (theatre side)
+  GRID_AXES.u = u; GRID_AXES.v = v
   const P = (pu: number, pv: number): V2 => [ax + u[0] * pu + v[0] * pv, az + u[1] * pu + v[1] * pv]
 
   const region = GRID.region.map(toL)
@@ -120,6 +126,7 @@ function buildCity(t: Terrain): Built {
    * shed roofs drain toward `drain` (one of +u, -u, +v, -v): the courtyard of a peristyle house. */
   const wing = (cu: number, cv: number, lu: number, lv: number, h: number, base: number, roof: RoofKind | null, drain?: 'u+' | 'u-' | 'v+' | 'v-') => {
     const [x, z] = P(cu, cv)
+    HOUSE_RECTS.push({ x, z, hu: lu / 2, hv: lv / 2 })
     // grid-aligned: local z along u (length lu), local x along v (width lv)
     const sink = 1.5
     push(wallM, x, z, base - sink, lv, h + sink, lu)
@@ -144,6 +151,12 @@ function buildCity(t: Terrain): Built {
     const mx = (a[0] + b[0]) / 2, mz = (a[1] + b[1]) / 2
     if (!streetSegs.has(key) && inPoly(mx, mz, region) && !excluded.slice(0, PLAN.zones.length).some((p) => inPoly(mx, mz, p)) && slopeOk([a, b], 14))
       streetSegs.set(key, { a, b, w })
+  }
+
+  // the paved carriageway of the main colonnaded street (from the Frontinus Gate to the south gate)
+  for (let k = 0; k < Math.ceil(L / GRID.pitchU); k++) {
+    const a0 = P(k * GRID.pitchU, 0), b0 = P(Math.min(L, (k + 1) * GRID.pitchU), 0)
+    if (slopeOk([a0, b0], 14)) streetSegs.set(`main${k}`, { a: a0, b: b0, w: 13.5 })
   }
 
   for (const side of [1, -1] as const) {
@@ -397,7 +410,7 @@ export function CityGrid({ terrain }: { terrain: Terrain }) {
     return { ...l, pos: [x, terrain.heightAt(x, z) + 14, z] as THREE.Vector3Tuple }
   }), [terrain])
 
-  const inYear = mode !== 'plan' || (year >= GRID.built && year <= GRID.until)
+  const inYear = !timeGated(mode) || (year >= GRID.built && year <= GRID.until)
   const visible = show && inYear && !(era === 'today' && mode !== 'plan')
 
   const tmp = useMemo(() => new THREE.Vector3(), [])
@@ -423,7 +436,7 @@ export function CityGrid({ terrain }: { terrain: Terrain }) {
       <primitive object={built.courts} />
       <primitive object={built.piers} />
       {built.ruins && <primitive object={built.ruins} />}
-      {visible && mode !== 'plan' && labels.map((l, i) => (
+      {visible && mode !== 'plan' && mode !== 'walk' && labels.map((l, i) => (
         <Html key={l.en + l.lat} position={l.pos} center zIndexRange={[4, 0]} style={{ pointerEvents: 'none' }}>
           <span ref={(el) => { labelRefs.current[i] = el }} className="whitespace-nowrap rounded-full bg-black/45 px-2 py-0.5 font-serif text-[11px] italic text-travertine/90 backdrop-blur-sm">{l[lang]}</span>
         </Html>

@@ -3,7 +3,7 @@ import { Html } from '@react-three/drei'
 import type { Terrain } from './terrainData'
 import { LANDMARKS } from '../content/landmarks'
 import { lname } from '../content/types'
-import { useApp } from '../store'
+import { timeGated, useApp } from '../store'
 import { flyTo, orbitPose } from './camera'
 import type * as THREE from 'three'
 
@@ -51,7 +51,7 @@ export function Pins({ terrain }: { terrain: Terrain }) {
   return (
     <>
       {placed.map(({ l, n, pos }) => {
-        const exists = mode !== 'plan' || (year >= l.built && (l.until === undefined || year <= l.until))
+        const exists = !timeGated(mode) || (year >= l.built && (l.until === undefined || year <= l.until))
         const active = selected === l.id || hovered === l.id
         const showLabel = active
         return (

@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 
-export type Mode = 'intro' | 'explore' | 'plan' | 'tour'
+export type Mode = 'intro' | 'explore' | 'plan' | 'tour' | 'walk' | 'choose'
+/** modes where the timeline year decides which monuments stand */
+export const timeGated = (m: Mode) => m === 'plan' || m === 'walk'
 export type Era = 'ancient' | 'today'
 export type Lang = 'en' | 'tr'
 
@@ -18,6 +20,9 @@ interface State {
   showPerf: boolean
   /** whole-city layer: street grid, houses, mapped ruins */
   showGrid: boolean
+  /** first-person character (walk mode) */
+  character: string | null
+  setCharacter: (id: string | null) => void
   setShowGrid: (v: boolean) => void
   tiles: 'off' | 'loading' | 'ready' | 'error'
   setTiles: (t: State['tiles']) => void
@@ -50,6 +55,8 @@ export const useApp = create<State>((set) => ({
   arOpen: false,
   showPerf: false,
   showGrid: false,
+  character: null,
+  setCharacter: (character) => set({ character }),
   setShowGrid: (showGrid) => set({ showGrid }),
   tiles: 'off',
   setTiles: (tiles) => set({ tiles }),

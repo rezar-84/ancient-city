@@ -22,10 +22,11 @@ function ModeTabs({ compact = false }: { compact?: boolean }) {
   const t = useT()
   const mode = useApp((s) => s.mode)
   const set = useApp.getState()
-  const tabs: Array<{ id: 'explore' | 'plan' | 'tour'; icon: string; label: string; go: () => void }> = [
+  const tabs: Array<{ id: 'explore' | 'plan' | 'tour' | 'choose'; icon: string; label: string; go: () => void }> = [
     { id: 'explore', icon: '◭', label: t('map3d'), go: () => set.setMode('explore') },
     { id: 'plan', icon: '▦', label: t('plan'), go: () => { set.setEra('ancient'); set.setMode('plan') } },
     { id: 'tour', icon: '▶', label: t('tour'), go: () => { set.select(null); set.setMode('tour'); set.setTour(0, true) } },
+    { id: 'choose', icon: '⚑', label: t('walk'), go: () => { set.select(null); set.setMode('choose') } },
   ]
   if (compact) return (
     <>
@@ -40,7 +41,7 @@ function ModeTabs({ compact = false }: { compact?: boolean }) {
   return (
     <>
       {tabs.map((x) => (
-        <button key={x.id} className={mode === x.id ? 'btn-active' : 'btn-ghost'} onClick={x.go}>{x.id === 'tour' ? '▶ ' : ''}{x.label}</button>
+        <button key={x.id} className={mode === x.id ? 'btn-active' : 'btn-ghost'} onClick={x.go}>{x.id === 'tour' ? '▶ ' : x.id === 'choose' ? '⚑ ' : ''}{x.label}</button>
       ))}
     </>
   )
@@ -75,7 +76,7 @@ export function TopBar() {
   const lang = useApp((s) => s.lang)
   const [qr, setQr] = useState(false)
   const [more, setMore] = useState(false)
-  if (mode === 'intro') return null
+  if (mode === 'intro' || mode === 'walk' || mode === 'choose') return null
   const set = useApp.getState()
   return (
     <>

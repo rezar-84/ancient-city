@@ -5,7 +5,7 @@ import type { Terrain } from './terrainData'
 import { BUILDERS, createColonnadedStreet, createNecropolis, createWall, snapToTerrain } from './generators'
 import { LANDMARKS } from '../content/landmarks'
 import { PLAN } from '../content/plan'
-import { useApp } from '../store'
+import { timeGated, useApp } from '../store'
 import { getMaterials } from './materials'
 import { groundUniforms, sceneUniforms, setGroundData } from './Terrain'
 import { MONUMENT_FOOTPRINTS, registerFootprint } from './footprints'
@@ -286,7 +286,7 @@ export function City({ terrain }: { terrain: Terrain }) {
     flat.current += (target - flat.current) * k
     for (const p of pieces) {
       if (p.flatten) p.obj.scale.y = flat.current
-      p.obj.visible = mode !== 'plan' || (year >= p.built && (p.until === undefined || year <= p.until))
+      p.obj.visible = !timeGated(mode) || (year >= p.built && (p.until === undefined || year <= p.until))
     }
     getMaterials().roofTile.visible = flat.current > 0.4
     if (root.current) root.current.visible = !(era === 'today' && tiles === 'ready' && mode !== 'plan')

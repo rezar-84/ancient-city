@@ -55,7 +55,7 @@ export function NavControls() {
     return () => cancelAnimationFrame(raf)
   }, [])
 
-  if (mode === 'intro' || mode === 'tour') return null
+  if (mode === 'intro' || mode === 'tour' || mode === 'walk' || mode === 'choose') return null
   const plan = mode === 'plan'
   const pos = (plan ? 'bottom-[200px] right-2.5 sm:bottom-36 sm:right-6' : 'bottom-[136px] right-2.5 sm:bottom-16 sm:right-4')
     + (selected ? ' hidden sm:flex sm:right-[452px]' : '')

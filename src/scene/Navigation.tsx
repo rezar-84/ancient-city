@@ -24,7 +24,7 @@ export function Navigation() {
       if (typing(e) || e.metaKey || e.ctrlKey || e.altKey) return
       const k = e.key.toLowerCase()
       const m = useApp.getState().mode
-      if (m === 'tour' || m === 'intro') return
+      if (m === 'tour' || m === 'intro' || m === 'walk') return
       // in plan mode the arrow keys move the map too; space/arrows stay with the tour elsewhere
       if (NAV_KEYS.has(k)) { keys.add(k); killFlight(); if (k.startsWith('arrow')) e.preventDefault() }
     }
@@ -50,7 +50,7 @@ export function Navigation() {
     const el = gl.domElement
     const dbl = (e: MouseEvent) => {
       const m = useApp.getState().mode
-      if (m === 'tour' || m === 'intro' || !rig.controls) return
+      if (m === 'tour' || m === 'intro' || m === 'walk' || !rig.controls) return
       const r = el.getBoundingClientRect()
       const ndc = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1)
       ray.setFromCamera(ndc, camera)
@@ -74,7 +74,7 @@ export function Navigation() {
   const move = useMemo(() => new THREE.Vector3(), [])
   useFrame((_, rawDt) => {
     const ctl = rig.controls, t = getTerrain()
-    if (!ctl || !t) return
+    if (!ctl || !t || useApp.getState().mode === 'walk') return
     const dt = Math.min(rawDt, 0.1)
     const cam = camera
     const offset = cam.position.clone().sub(ctl.target)

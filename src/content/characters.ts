@@ -37,14 +37,14 @@ export const CHARACTERS: Character[] = [
     role: { en: 'Priestess of Apollo', tr: 'Apollon rahibesi' },
     bio: { en: 'Serves at the oracle of Apollo Archegetes above the deadly cave of Pluto. Knows every rite of the sanctuary.', tr: 'Pluton’un ölümcül mağarasının üstündeki Apollon Arkhegetes kehanet merkezinde görev yapar. Kutsal alanın her ayinini bilir.' },
     portrait: '/characters/theano.jpg', colors: { body: '#efe8dc', accent: '#c9a45c' },
-    spawn: { lat: 37.92735, lon: 29.12605, heading: 120 },
+    spawn: { lat: 37.92632, lon: 29.12655, heading: 95 },
   },
   {
     id: 'nikias', name: 'Nikias', gender: 'm', era: 'hellenistic', year: -150,
     role: { en: 'Wool merchant', tr: 'Yün tüccarı' },
     bio: { en: 'Buys fleece from the Lycus valley and sells cloth dyed in the city’s mineral water to traders from Pergamon.', tr: 'Lykos vadisinden yapağı alır, kentin mineralli suyuyla boyanmış kumaşları Bergamalı tüccarlara satar.' },
     portrait: '/characters/nikias.jpg', colors: { body: '#8a5a3a', accent: '#5b2a4a' },
-    spawn: { lat: 37.9282, lon: 29.1249, heading: 150 },
+    spawn: { lat: 37.9282, lon: 29.12459, heading: 150 },
   },
   {
     id: 'aurelia', name: 'Aurelia', gender: 'f', era: 'roman', year: 200,
@@ -65,7 +65,7 @@ export const CHARACTERS: Character[] = [
     role: { en: 'Pilgrim', tr: 'Hacı' },
     bio: { en: 'Has walked from Constantinople to pray at the shrine of the Apostle Philip and fill her flask with holy oil.', tr: 'Havari Philippos’un türbesinde dua etmek ve matarasını kutsal yağla doldurmak için Konstantinopolis’ten yürüyerek geldi.' },
     portrait: '/characters/eudokia.jpg', colors: { body: '#5a6a7a', accent: '#d8c6a8' },
-    spawn: { lat: 37.92237, lon: 29.12886, heading: 330 },
+    spawn: { lat: 37.92285, lon: 29.12851, heading: 330 },
   },
   {
     id: 'philippos', name: 'Brother Philippos', gender: 'm', era: 'byzantine', year: 500,

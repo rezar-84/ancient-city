@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useApp } from '../store'
+import { timeGated, useApp } from '../store'
 import { LANDMARKS } from '../content/landmarks'
 import { LANG_LABEL, PLACE_SOUND, langForYear, type VoiceLine } from '../content/soundscapes'
 import { getTerrain } from '../scene/terrainData'
@@ -42,28 +42,30 @@ export function PlaceAudio() {
       const s = useApp.getState()
       if (!t || !ctl || !cam || s.mode === 'intro') { setBedLevels({}); return }
       if (!pos.current.size) for (const l of LANDMARKS) pos.current.set(l.id, t.toLocal(l.lat, l.lon))
-      const zoom = cam.position.distanceTo(ctl.target)
+      const walking = s.mode === 'walk'
+      const zoom = walking ? 120 : cam.position.distanceTo(ctl.target)
+      const focusPt = walking ? cam.position : ctl.target
       const today = s.era === 'today' && s.mode !== 'plan'
       const levels: Record<string, number> = {}
       const add = (bed: string, v: number) => { if (today && !NATURE.has(bed)) v *= 0.15; levels[bed] = Math.max(levels[bed] ?? 0, v) }
       for (const l of LANDMARKS) {
         const ps = PLACE_SOUND[l.id], p = pos.current.get(l.id)
         if (!ps || !p) continue
-        const exists = s.mode !== 'plan' || (s.year >= l.built && (l.until === undefined || s.year <= l.until))
+        const exists = !timeGated(s.mode) || (s.year >= l.built && (l.until === undefined || s.year <= l.until))
         if (!exists) continue
         let w = 0
         if (s.mode !== 'plan') {
-          const focus = Math.hypot(ctl.target.x - p[0], ctl.target.z - p[1])
+          const focus = Math.hypot(focusPt.x - p[0], focusPt.z - p[1])
           w = smooth(280, 40, focus) * smooth(1500, 260, zoom)
         }
         if (s.selected === l.id) w = Math.max(w, s.mode === 'plan' ? 0.55 : 0.9)
         if (w > 0) add(ps.bed, w * 0.6)
       }
       // the living city around you when the whole-city layer is on
-      if (s.showGrid && s.mode === 'explore' && s.era === 'ancient') {
+      if (s.showGrid && (s.mode === 'explore' || walking) && s.era === 'ancient') {
         const [ax, az] = t.toLocal(...GRID.axisFrom), [bx, bz] = t.toLocal(...GRID.axisTo)
         const mx = (ax + bx) / 2, mz = (az + bz) / 2
-        const inCity = smooth(750, 350, Math.hypot(ctl.target.x - mx, ctl.target.z - mz))
+        const inCity = smooth(750, 350, Math.hypot(focusPt.x - mx, focusPt.z - mz))
         add('street', inCity * smooth(1600, 300, zoom) * 0.4)
       }
       setBedLevels(levels)
@@ -81,7 +83,8 @@ export function PlaceAudio() {
       if (s.mode === 'intro' || s.mode === 'tour') track = 'theme'
       else if (s.selected === 'ploutonion') track = 'tension'
       else if (s.selected && CHRISTIAN.has(s.selected)) track = 'byzantine'
-      else if (s.mode === 'plan' && s.year >= 330) track = 'byzantine'
+      else if (timeGated(s.mode) && s.year >= 330) track = 'byzantine'
+      else if (s.mode === 'choose') track = 'theme'
       setMusic(track)
     }, 400)
     return () => window.clearInterval(id)
@@ -120,7 +123,7 @@ export function PlaceAudio() {
     const ps = PLACE_SOUND[selected]
     if (!l || !ps?.voice) return
     const s = useApp.getState()
-    const year = mode === 'plan' ? s.year : l.built
+    const year = timeGated(mode) ? s.year : l.built
     const v = ps.voice[langForYear(year)]
     if (!v) return
     const timer = window.setTimeout(() => { void playVoice(v) }, 1400)

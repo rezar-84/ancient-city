@@ -2,7 +2,6 @@ import { useApp } from '../store'
 import { useT } from '../i18n'
 import { LangSwitch, SoundMenu } from './TopBar'
 import { startAmbient } from './ambient'
-import { goToViewpoint } from './Viewpoints'
 
 export function Intro() {
   const t = useT()
@@ -35,10 +34,10 @@ export function Intro() {
             ▶ {t('tour')}
           </button>
           <button
-            className="btn justify-center border border-travertine/40 px-7 py-3 text-base text-travertine hover:bg-white/10"
-            onClick={() => { startAmbient(); useApp.getState().setMode('explore'); setTimeout(() => goToViewpoint('pamukkale', 3.5), 50) }}
+            className="btn justify-center border border-gold/60 px-7 py-3 text-base text-gold hover:bg-gold/10"
+            onClick={() => { startAmbient(); useApp.getState().setMode('choose') }}
           >
-            ◐ Pamukkale
+            ⚑ {t('walk')}
           </button>
         </div>
       )}
