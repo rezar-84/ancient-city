@@ -11,7 +11,10 @@ import { CityGrid } from './CityGrid'
 import { CityDetails } from './CityDetails'
 import { Pins } from './Pins'
 import { TodayTiles } from './TodayTiles'
-import { HAZE, PloutonionMist, SkyDome, patchFogChunks } from './Effects'
+import { computeSky, SKY } from './sky'
+import { isLight } from './quality'
+import Torches from './Torches'
+import { PloutonionMist, SkyDome, patchFogChunks } from './Effects'
 import { sceneUniforms } from './Terrain'
 import { PlanInk } from './PlanInk'
 import { Navigation } from './Navigation'
@@ -25,15 +28,10 @@ const terrainPromise = loadTerrain()
 patchFogChunks()
 const PostFX = lazy(() => import('./PostFX'))
 
-/** Phones/tablets and small screens get the light tier: 2k shadows, no post-processing. */
-const isLight = typeof window !== 'undefined' &&
-  (window.matchMedia?.('(pointer: coarse)').matches || Math.min(window.innerWidth, window.innerHeight) < 700)
 const SHADOW_RES = isLight ? 2048 : 4096
 /** ?fx=0 / ?fx=1 forces the post-processing tier off/on (testing). */
 const fxParam = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('fx') : null
 
-/** Golden-hour sun from the west-south-west: Pamukkale's travertines face west. */
-const SUN_DIR = new THREE.Vector3(-0.78, 0.42, 0.46).normalize()
 
 function World() {
   const data = use(terrainPromise)
@@ -46,6 +44,7 @@ function World() {
       <CityGrid terrain={data} />
       <CityDetails terrain={data} />
       <Crowd terrain={data} />
+      <Torches terrain={data} />
       {!walking && <Pins terrain={data} />}
       <PloutonionMist terrain={data} />
       <PlanInk terrain={data} />
@@ -56,6 +55,8 @@ function World() {
 
 function Lights() {
   const light = useRef<THREE.DirectionalLight>(null)
+  const hemi = useRef<THREE.HemisphereLight>(null)
+  const live = useRef({ hour: -1, sent: 0 })
   const { scene } = useThree()
   const fog = useRef<THREE.Fog>(null)
   useEffect(() => {
@@ -63,16 +64,31 @@ function Lights() {
     if (!l) return
     scene.add(l.target)
     // linear range drives the custom height fog (Effects.patchFogChunks): aerial perspective from ~500 m
-    fog.current = new THREE.Fog(HAZE.clone(), 500, 9000)
+    fog.current = new THREE.Fog(SKY.haze.clone(), 500, 9000)
     scene.fog = fog.current
     return () => { scene.fog = null }
   }, [scene])
   // shadow frustum follows the orbit target and tightens as the camera comes closer -> crisp close-up shadows
   const tgt = useRef(new THREE.Vector3())
-  useFrame(() => {
+  useFrame((_, dt) => {
     const l = light.current, ctl = rig.controls, cam = rig.camera
+    // time of day: the user's hour, or a slow cycle (1 game hour = 2 real minutes); the plan keeps its fixed light
+    const app = useApp.getState()
+    const lv = live.current
+    let h = app.hour
+    if (app.dayCycle && !app.walkPaused) {
+      if (lv.hour < 0) lv.hour = app.hour
+      lv.hour = (lv.hour + Math.min(dt, 0.1) / 120) % 24
+      h = lv.hour
+      if (Math.abs(h - app.hour) > 0.05 && performance.now() - lv.sent > 400) { lv.sent = performance.now(); app.setHour(h, true) }
+    } else lv.hour = -1
+    if (app.mode === 'plan') h = 16
+    if (Math.abs(h - SKY.hour) > 1e-4) computeSky(h)
+    if (hemi.current) { hemi.current.color.copy(SKY.hemiSky); hemi.current.groundColor.copy(SKY.hemiGround); hemi.current.intensity = SKY.hemiIntensity }
+    if (l) { l.color.copy(SKY.lightColor); l.intensity = SKY.lightIntensity }
+    scene.environmentIntensity = SKY.envIntensity
     // no haze on the parchment plan
-    if (fog.current) { const p = sceneUniforms.uPlan.value; fog.current.near = 500 + p * 1e6; fog.current.far = 9000 + p * 2e6 }
+    if (fog.current) { const p = sceneUniforms.uPlan.value; fog.current.color.copy(SKY.haze); fog.current.near = 500 + p * 1e6; fog.current.far = 9000 + p * 2e6 }
     if (!l || !ctl || !cam) return
     const walking = useApp.getState().mode === 'walk'
     if (walking) tgt.current.set(walk.x, walk.feet, walk.z)
@@ -87,14 +103,14 @@ function Lights() {
     const texel = (2 * ext) / SHADOW_RES
     const tx = Math.round(tgt.current.x / texel) * texel, tz = Math.round(tgt.current.z / texel) * texel
     l.target.position.set(tx, tgt.current.y, tz)
-    l.position.set(tx + SUN_DIR.x * 1600, tgt.current.y + SUN_DIR.y * 1600, tz + SUN_DIR.z * 1600)
+    l.position.set(tx + SKY.lightDir.x * 1600, tgt.current.y + SKY.lightDir.y * 1600, tz + SKY.lightDir.z * 1600)
     // bias in world units scales with texel size: no acne on the travertine, no peter-panning under houses
     l.shadow.normalBias = THREE.MathUtils.clamp(texel * 1.6, 0.06, 1.0)
   })
   return (
     <>
       {/* sky/ground bounce kept low so the sun's shadows read; the environment adds soft directional fill */}
-      <hemisphereLight args={['#c4d8ec', '#7a5c3e', 0.32]} />
+      <hemisphereLight ref={hemi} args={['#c4d8ec', '#7a5c3e', 0.32]} />
       <directionalLight
         ref={light}
         intensity={2.6}
@@ -113,7 +129,7 @@ function Lights() {
         <Lightformer form="rect" intensity={0.45} color="#e9c9a0" position={[6, 1.5, -4]} scale={[10, 2, 1]} />
         <Lightformer form="rect" intensity={0.55} color="#9c7b58" position={[0, -6, 0]} rotation-x={-Math.PI / 2} scale={[16, 16, 1]} />
       </Environment>
-      <SkyDome sunDir={SUN_DIR} />
+      <SkyDome />
     </>
   )
 }

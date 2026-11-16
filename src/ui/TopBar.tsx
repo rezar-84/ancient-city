@@ -4,6 +4,7 @@ import { useApp } from '../store'
 import { useT } from '../i18n'
 import { getVolume, onAmbientChange, setVolume } from './ambient'
 import type { Layer } from '../audio/engine'
+import { TimeOfDayButton, TimeOfDayPanel } from './TimeOfDay'
 
 export function LangSwitch() {
   const lang = useApp((s) => s.lang)
@@ -100,6 +101,7 @@ export function TopBar() {
             {mode !== 'plan' && <EraSwitch />}
             <LangSwitch />
           </div>
+          <div className="hidden sm:block"><TimeOfDayButton /></div>
           <SoundMenu />
           <a className="glass btn-ghost hidden sm:inline-flex" href="#/guide" target="_blank" rel="noreferrer" title={t('guide')}>⎙</a>
           <button className="glass btn-ghost hidden sm:inline-flex" onClick={() => setQr((q) => !q)} title={t('scanToOpen')}>▦</button>
@@ -126,6 +128,7 @@ export function TopBar() {
             <div className="flex flex-col gap-3 text-sm">
               {mode !== 'plan' && <div className="flex items-center justify-between"><span className="text-travertine/70">{lang === 'en' ? 'View' : 'Görünüm'}</span><EraSwitch /></div>}
               <div className="flex items-center justify-between"><span className="text-travertine/70">{lang === 'en' ? 'Language' : 'Dil'}</span><LangSwitch /></div>
+              {mode !== 'plan' && <div className="border-t border-white/10 pt-3"><TimeOfDayPanel /></div>}
               <div className="flex gap-2 border-t border-white/10 pt-3">
                 <a className="btn-ghost flex-1 justify-center rounded-xl border border-white/15" href="#/guide">⎙ {t('guide')}</a>
                 <a className="btn-ghost flex-1 justify-center rounded-xl border border-white/15" href="#/poster">▭ {lang === 'en' ? 'Posters' : 'Posterler'}</a>

@@ -1,6 +1,7 @@
 import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
+import { SKY } from './sky'
 import { sceneUniforms } from './Terrain'
 import type { Terrain } from './terrainData'
 import { LANDMARKS } from '../content/landmarks'
@@ -53,7 +54,6 @@ export function PloutonionMist({ terrain }: { terrain: Terrain }) {
 
 /** Horizon haze: fog colour and the bottom of the sky gradient are the same, so distance melts into sky. */
 export const HAZE = new THREE.Color('#cdc1ad')
-const ZENITH = new THREE.Color('#4f7fb0')
 const GROUND = new THREE.Color('#2a1f16')
 
 // Height fog: linear THREE.Fog drives start/end, density thickens in the valley (low Y) and thins with altitude.
@@ -91,13 +91,14 @@ export function patchFogChunks() {
 
 /** Gradient sky dome that follows the camera: haze at the horizon, blue overhead, a warm glow round the sun,
  * dark earth below. Fades out in plan mode so the parchment map sits on the page background. */
-export function SkyDome({ sunDir }: { sunDir: THREE.Vector3 }) {
+export function SkyDome() {
   const mesh = useRef<THREE.Mesh>(null)
   const mat = useMemo(() => new THREE.ShaderMaterial({
     uniforms: {
-      uZenith: { value: ZENITH }, uHaze: { value: HAZE }, uGround: { value: GROUND },
-      uSun: { value: sunDir.clone().normalize() }, uSunCol: { value: new THREE.Color('#ffc58a') },
-      uPlan: sceneUniforms.uPlan,
+      // live references into the time-of-day state: no per-frame uniform copies
+      uZenith: { value: SKY.zenith }, uHaze: { value: SKY.haze }, uGround: { value: GROUND },
+      uSun: { value: SKY.sunDir }, uSunCol: { value: SKY.sunGlow },
+      uNight: { value: 0 }, uPlan: sceneUniforms.uPlan,
     },
     vertexShader: /* glsl */ `
       varying vec3 vDir;
@@ -107,21 +108,35 @@ export function SkyDome({ sunDir }: { sunDir: THREE.Vector3 }) {
       }`,
     fragmentShader: /* glsl */ `
       uniform vec3 uZenith, uHaze, uGround, uSun, uSunCol;
-      uniform float uPlan;
+      uniform float uPlan, uNight;
       varying vec3 vDir;
+      float hash3(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
       void main() {
         vec3 d = normalize(vDir);
         float e = d.y;
         vec3 sky = mix(uHaze, uZenith, pow(smoothstep(0.0, 0.75, e), 0.7));
         float s = max(dot(d, uSun), 0.0);
-        sky += uSunCol * (pow(s, 6.0) * 0.35 + pow(s, 64.0) * 0.6) * smoothstep(-0.1, 0.1, e);
+        sky += uSunCol * (pow(s, 6.0) * 0.35 + pow(s, 64.0) * 0.6) * smoothstep(-0.1, 0.1, e) * smoothstep(-0.25, 0.0, uSun.y);
+        if (uNight > 0.01 && e > 0.0) {
+          // stars: a sparse hash lattice, twinkle-free so it does not crawl when the camera turns
+          vec3 g = floor(d * 260.0);
+          float st = step(0.9965, hash3(g)) * smoothstep(0.02, 0.25, e);
+          sky += vec3(0.85, 0.9, 1.0) * st * uNight * (0.5 + hash3(g + 7.0));
+          // moon disc and halo in the south-east
+          vec3 md = normalize(vec3(0.35, 0.75, 0.45));
+          float m = max(dot(d, md), 0.0);
+          sky += vec3(0.75, 0.82, 0.95) * (smoothstep(0.9993, 0.9996, m) * 1.4 + pow(m, 80.0) * 0.12) * uNight;
+        }
         vec3 col = e >= 0.0 ? sky : mix(uHaze, uGround, smoothstep(0.0, 0.18, -e));
         gl_FragColor = vec4(col, 1.0 - uPlan);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
       }`,
     side: THREE.BackSide, depthWrite: false, transparent: true, fog: false,
-  }), [sunDir])
-  useFrame(({ camera }) => { mesh.current?.position.copy(camera.position) })
+  }), [])
+  useFrame(({ camera }) => {
+    mesh.current?.position.copy(camera.position)
+    mat.uniforms.uNight.value = SKY.night
+  })
   return <mesh ref={mesh} material={mat} frustumCulled={false} renderOrder={-10}><sphereGeometry args={[14000, 32, 16]} /></mesh>
 }

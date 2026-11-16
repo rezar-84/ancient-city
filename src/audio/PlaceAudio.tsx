@@ -1,3 +1,4 @@
+import { SKY } from '../scene/sky'
 import { useEffect, useRef, useState } from 'react'
 import { timeGated, useApp } from '../store'
 import { LANDMARKS } from '../content/landmarks'
@@ -97,7 +98,7 @@ export function PlaceAudio() {
     const next = () => {
       t = window.setTimeout(() => {
         const s = useApp.getState()
-        if (s.mode !== 'intro') playAmbientOneShot(Math.random() < 0.6 ? 'gust' : 'birds', 0.5 + Math.random() * 0.4)
+        if (s.mode !== 'intro') playAmbientOneShot(Math.random() < 0.6 || SKY.night > 0.5 ? 'gust' : 'birds', 0.5 + Math.random() * 0.4)
         next()
       }, 18000 + Math.random() * 30000)
     }

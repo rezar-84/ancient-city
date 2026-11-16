@@ -11,6 +11,7 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import { Experience } from './scene/Experience'
 import { Intro } from './ui/Intro'
 import { TopBar } from './ui/TopBar'
+import { useTimeKeys } from './ui/TimeOfDay'
 import { LandmarkPanel } from './ui/LandmarkPanel'
 import { PlanOverlay } from './ui/PlanOverlay'
 import { TodayStatus } from './ui/TodayStatus'
@@ -61,6 +62,7 @@ export default function App() {
   const hash = useHashRoute()
   const lang = useApp((s) => s.lang)
   const arOpen = useApp((s) => s.arOpen)
+  useTimeKeys()
   useEffect(() => { document.documentElement.lang = lang }, [lang])
   useEffect(() => {
     const m = hash.match(/^#\/place\/([\w-]+)/)

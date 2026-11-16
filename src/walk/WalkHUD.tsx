@@ -8,6 +8,7 @@ import { getTerrain } from '../scene/terrainData'
 import { PlanSVG } from '../guide/PlanSVG'
 import { walk } from './WalkControls'
 import { formatYear } from '../i18n'
+import { TimeOfDayPanel } from '../ui/TimeOfDay'
 
 const tr = (lang: 'en' | 'tr', en: string, t: string) => (lang === 'en' ? en : t)
 const MAP_W = 170
@@ -221,7 +222,7 @@ function SettingsButton({ lang }: { lang: 'en' | 'tr' }) {
     <div className="relative">
       <button className="glass btn-ghost" onClick={() => { useApp.getState().setWalkOverlay(open ? null : 'settings'); if (document.pointerLockElement) void document.exitPointerLock() }} aria-expanded={open} aria-label="settings">⚙</button>
       {open && (
-        <div className="glass absolute right-0 top-12 w-64 rounded-2xl p-4 text-sm">
+        <div className="glass absolute right-0 top-12 w-72 max-h-[75vh] overflow-y-auto rounded-2xl p-4 text-sm">
           <label className="block">
             <span className="mb-1 flex justify-between text-xs text-travertine/75"><span>{tr(lang, 'Walking speed', 'Yürüme hızı')}</span><span className="tabular-nums">{walk.speedMul.toFixed(2)}×</span></span>
             <input type="range" min={0.75} max={1.75} step={0.05} value={walk.speedMul} className="w-full accent-amber-500"
@@ -237,6 +238,7 @@ function SettingsButton({ lang }: { lang: 'en' | 'tr' }) {
               ))}
             </div>
           </div>
+          <div className="mt-4 border-t border-white/10 pt-3"><TimeOfDayPanel /></div>
         </div>
       )}
     </div>

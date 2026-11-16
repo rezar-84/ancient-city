@@ -47,6 +47,12 @@ interface State {
   setTourPlaying: (p: boolean) => void
   setAR: (o: boolean) => void
   togglePerf: () => void
+  /** local solar time 0–24 h; 16 h is the default warm afternoon light */
+  hour: number
+  /** let time pass slowly (1 game hour = 2 real minutes); moving the slider pauses it */
+  dayCycle: boolean
+  setHour: (h: number, fromCycle?: boolean) => void
+  setDayCycle: (on: boolean) => void
 }
 
 const initialLang = (() => {
@@ -88,6 +94,10 @@ export const useApp = create<State>((set) => ({
   setTourPlaying: (tourPlaying) => set({ tourPlaying }),
   setAR: (arOpen) => set({ arOpen }),
   togglePerf: () => set((s) => ({ showPerf: !s.showPerf })),
+  hour: 16,
+  dayCycle: false,
+  setHour: (h, fromCycle = false) => set((s) => ({ hour: ((h % 24) + 24) % 24, dayCycle: fromCycle ? s.dayCycle : false })),
+  setDayCycle: (dayCycle) => set({ dayCycle }),
 }))
 
 if (import.meta.env.DEV) (window as unknown as { __app: typeof useApp }).__app = useApp
