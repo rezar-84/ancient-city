@@ -11,6 +11,7 @@ import { LANDMARKS } from '../content/landmarks'
 import { timeGated, useApp } from '../store'
 import { gridFrame, stallSpots } from '../walk/spots'
 import { onStreet, walk } from '../walk/WalkControls'
+import { waterHere } from './Water'
 import { FACADE_MODULES } from './generators/house'
 import { FACADE_PLACEMENTS } from './CityGrid'
 
@@ -183,7 +184,7 @@ export function CityDetails({ terrain }: { terrain: Terrain }) {
     for (let i = 0; i < grass.count; i++) {
       const a = rand() * Math.PI * 2, r = 2 + Math.sqrt(rand()) * 45
       const x = walk.x + Math.cos(a) * r, z = walk.z + Math.sin(a) * r
-      if (onStreet(x, z)) { grass.setMatrixAt(i, m4.makeScale(0, 0, 0)); continue }
+      if (onStreet(x, z) || waterHere(x, z)) { grass.setMatrixAt(i, m4.makeScale(0, 0, 0)); continue }
       p.set(x, terrain.heightAt(x, z), z); q.setFromAxisAngle(up, rand() * 6.28); s.setScalar(0.7 + rand() * 0.9)
       grass.setMatrixAt(i, m4.compose(p, q, s))
     }
