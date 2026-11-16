@@ -18,6 +18,21 @@ export function createColonnadedStreet(o: ColonnadedStreetOptions = {}): THREE.G
     b.box('marble', 0.8, 0.4, l, side * (w / 2 + 0.5), h + 0.45);
     b.box('roofTile', d + 0.6, 0.35, l + 0.6, side * (w / 2 + d / 2), h + 0.85);
   }
+  // Repeated kerbs and paving are shared geometry, not individual draw calls.
+  const paving: Placement[] = [];
+  for (let z = -l / 2 + 0.75; z < l / 2; z += 1.5)
+    for (let x = -w / 2 + 0.75; x < w / 2; x += 1.5)
+      paving.push({ x, y: 0.15, z });
+  b.repeated('travertine', new THREE.BoxGeometry(1.46, 0.08, 1.46), paving);
+  for (const side of [-1, 1]) {
+    b.box('limestone', 0.32, 0.24, l, side * (w / 2 - 0.16), 0.2);
+    b.box('marble', 1.1, 0.16, l, side * (w / 2 + 0.5), h + 0.72);
+    for (let z = -l / 2 + pitch; z < l / 2; z += pitch * 4) {
+      const x = side * (w / 2 + d - 0.7);
+      b.box('travertine', 0.65, 0.16, 2.2, x, 0.9, z);
+      for (const offset of [-0.7, 0.7]) b.box('limestone', 0.5, 0.5, 0.3, x, 0.57, z + offset);
+    }
+  }
   b.repeated('marble', column(h), placements);
   return b.finish();
 }

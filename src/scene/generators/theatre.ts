@@ -54,5 +54,20 @@ export function createTheatre(o: TheatreOptions = {}): THREE.Group {
     for (const x of doors) b.box('marble', 6, 0.45, 2.8, x, 1.5 + (tier + 1) * sh * 0.43 + 0.5, frontZ - 1);
   }
   b.repeated('marble', column(sh * 0.43 - 0.3, 0.45), columns);
+  // Layered entablature catches sunlight without a high-poly ornament asset.
+  for (const tier of [1, 2]) {
+    const y = 1.5 + tier * sh * 0.43;
+    b.box('travertine', sw + 1.4, 0.22, 2.8, 0, y + 0.42, frontZ - 0.85);
+    b.box('marble', sw + 1.8, 0.18, 3.1, 0, y + 0.62, frontZ - 0.9);
+    const dentils: Placement[] = [];
+    for (let x = -sw / 2; x <= sw / 2; x += 0.85)
+      dentils.push({ x, y: y + 0.12, z: frontZ - 2.1 });
+    b.repeated('marble', new THREE.BoxGeometry(0.32, 0.25, 0.35), dentils);
+  }
+  for (const x of doors) {
+    b.box('marble', doorWidth + 1.4, 0.22, 2.5, x, 1.62, frontZ - 0.4);
+    for (const side of [-1, 1])
+      b.box('marble', 0.18, 4.8, 0.25, x + side * (doorWidth / 2 + 0.12), 3.9, frontZ - 0.82);
+  }
   return b.finish();
 }

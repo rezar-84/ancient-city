@@ -121,7 +121,7 @@ float contour(float h, float step, float w) {
   tRough = mix(tRough, 1.0, uPlan);
   // walk mode: at eye level the 0.8 m/px photo is a smear, so paint a procedural ground of dry earth,
   // grass patches and pebbles, keeping the photo's tint; travertine and pools are left as they are
-  float wk = uWalk * (1.0 - smoothstep(30.0, 140.0, dist)) * (1.0 - pool);
+  float wk = max(uWalk, uAncient * 0.8) * (1.0 - uPlan) * (1.0 - smoothstep(30.0, 180.0, dist)) * (1.0 - pool);
   if (wk > 0.0) {
     float g1 = tnoise(vWPos.xz * 0.07), g2 = tnoise(vWPos.xz * 0.55 + 3.0), g3 = tnoise(vWPos.xz * 2.7 - 5.0);
     float g4 = mix(0.5, tnoise(vWPos.xz * 11.0 + 1.7), 1.0 - smoothstep(0.08, 0.3, px * 11.0));

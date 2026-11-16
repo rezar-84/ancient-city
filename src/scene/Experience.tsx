@@ -1,6 +1,6 @@
 import { Suspense, lazy, use, useEffect, useRef } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { AdaptiveDpr, Environment, Lightformer, OrbitControls, PerformanceMonitor, Stats } from '@react-three/drei'
+import { Environment, Lightformer, OrbitControls, PerformanceMonitor, Stats } from '@react-three/drei'
 import * as THREE from 'three'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { getTerrain, loadTerrain } from './terrainData'
@@ -17,7 +17,7 @@ import { PlanInk } from './PlanInk'
 import { Navigation } from './Navigation'
 import { WalkControls } from '../walk/WalkControls'
 import { Crowd } from '../walk/Crowd'
-import { installCapture } from './captureRenders'
+import { capturePipeline, installCapture } from './captureRenders'
 import { useApp } from '../store'
 import { useState } from 'react'
 
@@ -95,8 +95,8 @@ function Lights() {
       <hemisphereLight args={['#c4d8ec', '#7a5c3e', 0.32]} />
       <directionalLight
         ref={light}
-        intensity={3.4}
-        color="#ffd09a"
+        intensity={2.6}
+        color="#ffe2bd"
         castShadow
         shadow-mapSize={[SHADOW_RES, SHADOW_RES]}
         shadow-bias={-0.0002}
@@ -104,7 +104,7 @@ function Lights() {
         shadow-camera-far={3400}
       />
       {/* soft image-based light without any download: warm low sun-side, cool sky dome, warm ground bounce */}
-      <Environment resolution={128} frames={1} environmentIntensity={0.85}>
+      <Environment resolution={128} frames={1} environmentIntensity={0.55}>
         <color attach="background" args={['#8fa6ba']} />
         <Lightformer form="rect" intensity={2.6} color="#ffcf9c" position={[-7, 3, 4]} scale={[9, 2.5, 1]} />
         <Lightformer form="rect" intensity={1.0} color="#bcd6f0" position={[0, 8, 0]} rotation-x={Math.PI / 2} scale={[16, 16, 1]} />
@@ -120,7 +120,7 @@ function Lights() {
 function IntroOrbit() {
   const mode = useApp((s) => s.mode)
   useFrame((_, dt) => {
-    if (mode !== 'intro' || !rig.controls) return
+    if (capturePipeline.busy || mode !== 'intro' || !rig.controls) return
     rig.controls.autoRotate = true
     rig.controls.autoRotateSpeed = 0.35
     void dt
@@ -182,11 +182,33 @@ function Controls() {
   )
 }
 
+/** One resolution owner combines measured capacity with camera motion. */
+function MotionQuality({ onMotion }: { onMotion: (moving: boolean) => void }) {
+  const previous = useRef(new THREE.Vector3())
+  const rotation = useRef(new THREE.Quaternion())
+  const lastMove = useRef(0)
+  const active = useRef(false)
+  useFrame(({ camera, clock }) => {
+    if (capturePipeline.busy) return
+    const now = clock.elapsedTime
+    if (previous.current.distanceToSquared(camera.position) > 0.0001 ||
+        1 - Math.abs(rotation.current.dot(camera.quaternion)) > 0.000001) lastMove.current = now
+    previous.current.copy(camera.position); rotation.current.copy(camera.quaternion)
+    const moving = now - lastMove.current < 0.8
+    if (active.current !== moving) { active.current = moving; onMotion(moving) }
+  })
+  return null
+}
+
 export function Experience() {
   const showPerf = useApp((s) => s.showPerf)
   const mode = useApp((s) => s.mode)
   const maxDpr = Math.min(window.devicePixelRatio, 1.75)
   const [dpr, setDpr] = useState(maxDpr)
+  const [moving, setMoving] = useState(false)
+  // Fixed resolution is useful for honest before/after profiling.
+  const fixedValue = Number(new URLSearchParams(window.location.search).get('dpr'))
+  const fixedDpr = fixedValue > 0 ? THREE.MathUtils.clamp(fixedValue, 0.65, maxDpr) : null
   // quality tier: AO/SMAA post chain on desktop GPUs; the first sustained decline turns it off for the session
   const [fx, setFx] = useState(fxParam ? fxParam === '1' : !isLight)
   useEffect(() => {
@@ -195,24 +217,25 @@ export function Experience() {
   return (
     <Canvas
       shadows
-      dpr={dpr}
+      dpr={fixedDpr ?? Math.max(0.65, dpr * (moving ? 0.8 : 1))}
       gl={{ antialias: true, powerPreference: 'high-performance', alpha: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.0 }}
       camera={{ position: [-1600, 1100, 1500], fov: 42, near: 2, far: 30000 }}
       onCreated={({ gl, scene }) => { if (import.meta.env.DEV) { (window as unknown as { __gl: unknown }).__gl = gl; installCapture(gl, scene) } }}
       onPointerMissed={() => useApp.getState().mode !== 'tour' && useApp.getState().select(null)}
     >
       <PerformanceMonitor
-        flipflops={4}
-        onDecline={() => { if (fx && fxParam !== '1') setFx(false); else setDpr((d) => Math.max(1, d - 0.25)) }}
-        onIncline={() => setDpr((d) => Math.min(maxDpr, d + 0.25))}
-        onFallback={() => { setFx(false); setDpr(1) }}
+        flipflops={6}
+        bounds={() => isLight ? [26, 35] : [45, 58]}
+        onDecline={() => { if (capturePipeline.busy) return; if (fx && fxParam !== '1') setFx(false); else setDpr((d) => Math.max(0.65, d - 0.15)) }}
+        onIncline={() => { if (!capturePipeline.busy) setDpr((d) => Math.min(maxDpr, d + 0.1)) }}
+        onFallback={() => { if (capturePipeline.busy) return; setFx(false); setDpr(0.65) }}
       />
-      <AdaptiveDpr pixelated={false} />
+      <MotionQuality onMotion={setMoving} />
       <Lights />
       <Suspense fallback={null}>
         <World />
       </Suspense>
-      {fx && mode !== 'plan' && mode !== 'walk' && <Suspense fallback={null}><PostFX /></Suspense>}
+      {fx && mode !== 'plan' && <Suspense fallback={null}><PostFX /></Suspense>}
       <GradeAnimator />
       <Controls />
       <IntroOrbit />

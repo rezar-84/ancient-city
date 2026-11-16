@@ -64,9 +64,15 @@ function GridToggle() {
   const showGrid = useApp((s) => s.showGrid)
   return (
     <button
-      className={'glass rounded-full px-3 py-1.5 text-xs ' + (showGrid ? 'bg-gold/80 text-ink' : 'btn-ghost')}
+      className={'glass inline-flex min-h-11 items-center gap-2 rounded-full border px-3 py-2 text-xs font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold ' + (showGrid ? 'border-gold bg-gold/80 text-ink' : 'border-white/30 text-travertine hover:border-gold')}
       onClick={() => useApp.getState().setShowGrid(!showGrid)} aria-pressed={showGrid} title={t('wholeCityTip')}
-    >⊞ {t('wholeCity')}</button>
+    >
+      <span>{t('wholeCity')}</span>
+      <span aria-hidden="true" className={'relative inline-flex h-5 w-9 shrink-0 rounded-full ' + (showGrid ? 'bg-ink/70' : 'bg-white/25')}>
+        <span className={'absolute top-0.5 h-4 w-4 rounded-full bg-travertine ' + (showGrid ? 'right-0.5' : 'left-0.5')} />
+      </span>
+      <span>{t(showGrid ? 'cityDetailsOn' : 'cityDetailsOff')}</span>
+    </button>
   )
 }
 
@@ -109,13 +115,16 @@ export function TopBar() {
         )}
       </header>
 
+      <div className="absolute left-2.5 top-[calc(max(0.625rem,env(safe-area-inset-top))+48px)] z-20 sm:hidden">
+        <GridToggle />
+      </div>
+
       {/* mobile: options sheet */}
       {more && (
         <div className="absolute inset-0 z-40 sm:hidden" onClick={() => setMore(false)}>
           <div className="glass absolute right-2.5 top-14 w-[min(88vw,320px)] rounded-2xl p-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex flex-col gap-3 text-sm">
               {mode !== 'plan' && <div className="flex items-center justify-between"><span className="text-travertine/70">{lang === 'en' ? 'View' : 'Görünüm'}</span><EraSwitch /></div>}
-              <div className="flex items-center justify-between"><span className="text-travertine/70">{lang === 'en' ? 'City' : 'Kent'}</span><GridToggle /></div>
               <div className="flex items-center justify-between"><span className="text-travertine/70">{lang === 'en' ? 'Language' : 'Dil'}</span><LangSwitch /></div>
               <div className="flex gap-2 border-t border-white/10 pt-3">
                 <a className="btn-ghost flex-1 justify-center rounded-xl border border-white/15" href="#/guide">⎙ {t('guide')}</a>
