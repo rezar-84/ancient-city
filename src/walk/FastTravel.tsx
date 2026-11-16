@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import * as THREE from 'three'
 import { useApp } from '../store'
 import { LANDMARKS } from '../content/landmarks'
@@ -26,6 +26,12 @@ export function standPoint(id: string) {
 
 let fadeEl: HTMLDivElement | null = null
 let travelVersion = 0
+function setOpen(open: boolean) {
+  const state = useApp.getState()
+  if (open && (state.mode !== 'walk' || state.walkPaused)) return
+  state.setWalkOverlay(open ? 'map' : null)
+  if (open && document.pointerLockElement) void document.exitPointerLock()
+}
 /** fade to black, move, fade back */
 export function travelTo(id: string) {
   const p = standPoint(id)
@@ -50,23 +56,22 @@ export function FastTravel() {
   const mode = useApp((st) => st.mode)
   const lang = useApp((st) => st.lang)
   const year = useApp((st) => st.year)
-  const [open, setOpen] = useState(false)
+  const open = useApp(st => st.walkOverlay === 'map')
   const active = mode === 'walk'
 
   useEffect(() => {
     if (!active) { setOpen(false); return }
     const key = (ev: KeyboardEvent) => {
       const tag = (ev.target as HTMLElement | null)?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || useApp.getState().walkPaused) return
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || useApp.getState().walkPaused || useApp.getState().walkOverlay === 'settings' || useApp.getState().selected) return
       if (ev.key.toLowerCase() === 'm') {
-        setOpen((o) => { if (!o && document.pointerLockElement) void document.exitPointerLock(); return !o })
+        if (!ev.repeat) setOpen(useApp.getState().walkOverlay !== 'map')
       }
       const num = Number(ev.key)
       if (num >= 1 && num <= 9 && !ev.repeat) {
         const l = LANDMARKS[num - 1]
-        if (l) travelTo(l.id)
+        if (l) { setOpen(false); travelTo(l.id) }
       }
-      if (ev.key === 'Escape') setOpen(false)
     }
     const openEv = () => setOpen(true)
     window.addEventListener('keydown', key)

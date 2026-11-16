@@ -10,7 +10,7 @@ function compile(path, requireFn = require, globals = {}) {
   return context.exports
 }
 function setup() {
-  const { useApp } = compile('src/store.ts', require, { navigator: { language: 'en' }, localStorage: { getItem: () => null } })
+  const { useApp, walkInputBlocked } = compile('src/store.ts', require, { navigator: { language: 'en' }, localStorage: { getItem: () => null } })
   const character = { id: 'test-citizen', year: 200 }
   const api = compile('src/walk/CharacterSelect.tsx', id => {
     if (id === '../store') return { useApp }
@@ -18,7 +18,7 @@ function setup() {
     if (id === '../ui/ambient') return { startAmbient: () => {} }
     return require(id)
   })
-  return { ...api, useApp, character }
+  return { ...api, useApp, character, walkInputBlocked }
 }
 test('new walk resets the saved session and sets the selected period', () => {
   const { beginWalk, useApp, character } = setup()
@@ -50,4 +50,40 @@ test('resume without a session leaves character selection open', () => {
   useApp.setState({ mode: 'choose' })
   resumeWalk()
   assert.equal(useApp.getState().mode, 'choose')
+})
+
+test('all walk overlays block input until dismissed', () => {
+  const { useApp, walkInputBlocked } = setup()
+  useApp.getState().setMode('walk')
+  assert.equal(walkInputBlocked(useApp.getState()), false)
+  for (const overlay of ['map', 'settings']) {
+    useApp.getState().setWalkOverlay(overlay)
+    assert.equal(walkInputBlocked(useApp.getState()), true)
+    useApp.getState().walkEscape()
+    assert.equal(useApp.getState().walkOverlay, null)
+    assert.equal(useApp.getState().walkPaused, false)
+    assert.equal(walkInputBlocked(useApp.getState()), false)
+  }
+})
+test('Escape dismisses place information before pausing and resuming', () => {
+  const { useApp, walkInputBlocked } = setup()
+  useApp.getState().setMode('walk')
+  useApp.getState().select('theatre')
+  useApp.getState().walkEscape()
+  assert.equal(useApp.getState().selected, null)
+  assert.equal(useApp.getState().walkPaused, false)
+  useApp.getState().walkEscape()
+  assert.equal(walkInputBlocked(useApp.getState()), true)
+  useApp.getState().walkEscape()
+  assert.equal(walkInputBlocked(useApp.getState()), false)
+})
+test('leaving and re-entering walk mode clears stale overlays', () => {
+  const { useApp, walkInputBlocked } = setup()
+  useApp.getState().setMode('walk')
+  useApp.getState().setWalkOverlay('settings')
+  useApp.getState().setMode('explore')
+  assert.equal(useApp.getState().walkOverlay, null)
+  assert.equal(walkInputBlocked(useApp.getState()), true)
+  useApp.getState().setMode('walk')
+  assert.equal(walkInputBlocked(useApp.getState()), false)
 })

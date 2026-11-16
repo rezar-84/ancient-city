@@ -5,7 +5,7 @@ import type { Terrain } from '../scene/terrainData'
 import { GRID } from '../content/grid'
 import { LANDMARKS } from '../content/landmarks'
 import { CHARACTERS } from '../content/characters'
-import { useApp } from '../store'
+import { useApp, walkInputBlocked } from '../store'
 import { createCartGeometry, createCrowdAttributes, createHorseGeometry, createPersonGeometry, ERA_PALETTES, patchCrowdMaterial, SKIN_TONES } from './npcGeometry'
 import { gridFrame, stallSpots } from './spots'
 import { walk } from './WalkControls'
@@ -185,8 +185,8 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
 
   useFrame((_, rawDt) => {
     if (!visible) return
-    const paused = mode === 'walk' && (useApp.getState().walkPaused || !!useApp.getState().selected || !!document.querySelector('[data-fastmap]'))
-    const dt = paused ? 0 : Math.min(rawDt, 0.1); clock.current += dt
+    if (mode === 'walk' && walkInputBlocked(useApp.getState())) return
+    const dt = Math.min(rawDt, 0.1); clock.current += dt
     const { F, npcs, carts, people, horses, cartMesh, pAttr, hAttr, cAttr, mats } = sim
     for (const m of mats) (m.userData.uTime as { value: number }).value = clock.current
     const walking = mode === 'walk'

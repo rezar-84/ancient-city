@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useApp } from '../store'
+import { useApp, walkInputBlocked } from '../store'
 import { CHARACTERS, ERA_LABEL } from '../content/characters'
 import { LANDMARKS } from '../content/landmarks'
 import { lname } from '../content/types'
@@ -80,12 +80,12 @@ export function WalkHUD() {
     raf = requestAnimationFrame(tick)
     const key = (ev: KeyboardEvent) => {
       const k = ev.key.toLowerCase()
-      if (ev.target instanceof HTMLInputElement || ev.target instanceof HTMLTextAreaElement) return
-      if (k === 'e' && !useApp.getState().walkPaused && nearRef.current) interact(nearRef.current)
-      if (k === 'escape' && !useApp.getState().walkPaused && !document.querySelector('[data-fastmap]')) {
+      if (k !== 'escape' && (ev.target instanceof HTMLInputElement || ev.target instanceof HTMLTextAreaElement)) return
+      if (k === 'e' && !walkInputBlocked(useApp.getState()) && nearRef.current) interact(nearRef.current)
+      if (k === 'escape' && !useApp.getState().walkPaused) {
         const state = useApp.getState()
-        if (state.selected) state.select(null)
-        else { state.setWalkPaused(true); if (document.pointerLockElement) void document.exitPointerLock() }
+        state.walkEscape()
+        if (useApp.getState().walkPaused && document.pointerLockElement) void document.exitPointerLock()
       }
     }
     window.addEventListener('keydown', key)
@@ -215,11 +215,11 @@ function Joystick() {
 }
 
 function SettingsButton({ lang }: { lang: 'en' | 'tr' }) {
-  const [open, setOpen] = useState(false)
+  const open = useApp(s => s.walkOverlay === 'settings')
   const [, force] = useState(0)
   return (
     <div className="relative">
-      <button className="glass btn-ghost" onClick={() => { if (document.pointerLockElement) void document.exitPointerLock(); setOpen((o) => !o) }} aria-expanded={open} aria-label="settings">⚙</button>
+      <button className="glass btn-ghost" onClick={() => { useApp.getState().setWalkOverlay(open ? null : 'settings'); if (document.pointerLockElement) void document.exitPointerLock() }} aria-expanded={open} aria-label="settings">⚙</button>
       {open && (
         <div className="glass absolute right-0 top-12 w-64 rounded-2xl p-4 text-sm">
           <label className="block">

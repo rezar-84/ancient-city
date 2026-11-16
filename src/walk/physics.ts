@@ -21,12 +21,11 @@ function shown(o: THREE.Object3D | null): boolean {
  */
 export class WorldProbe {
   private entries: Entry[] = []
-  private near: Entry[] = []
+  private cells = new Map<string, Entry[]>()
   private ray = new THREE.Raycaster()
   private hits: THREE.Intersection[] = []
   private v = new THREE.Vector3()
   private d = new THREE.Vector3()
-  private lastNear = new THREE.Vector2(1e9, 1e9)
 
   constructor() { (this.ray as unknown as { firstHitOnly: boolean }).firstHitOnly = true }
 
@@ -50,16 +49,21 @@ export class WorldProbe {
         this.entries.push({ mesh: m, sphere })
       })
     }
-    this.lastNear.set(1e9, 1e9)
+    this.cells.clear()
   }
 
-  /** keep a short list of meshes within ~60 m (rebuilt when the walker moves 10 m) */
+  /** Reuse broad-phase candidates across crowd members in the same 32 m cell.
+   * The cell half-diagonal keeps queries near its edges conservative. */
   private nearby(x: number, z: number) {
-    if (Math.hypot(x - this.lastNear.x, z - this.lastNear.y) > 10) {
-      this.near = this.entries.filter((e) => Math.hypot(e.sphere.center.x - x, e.sphere.center.z - z) < e.sphere.radius + 60)
-      this.lastNear.set(x, z)
-    }
-    return this.near
+    const gx = Math.floor(x / 32), gz = Math.floor(z / 32), key = `${gx},${gz}`
+    const cached = this.cells.get(key)
+    if (cached) return cached
+    const cx = gx * 32 + 16, cz = gz * 32 + 16
+    const entries = this.entries.filter(e =>
+      Math.hypot(e.sphere.center.x - cx, e.sphere.center.z - cz) < e.sphere.radius + 60 + Math.SQRT2 * 16)
+    if (this.cells.size >= 128) this.cells.delete(this.cells.keys().next().value!)
+    this.cells.set(key, entries)
+    return entries
   }
 
   private cast(origin: THREE.Vector3, dir: THREE.Vector3, far: number, x: number, z: number) {

@@ -50,3 +50,14 @@ test('head clearance detects the underside of a low roof', () => {
   assert.ok(Math.abs(probe.ceiling(0, 0, 1.9, 0.5) - 2.1) < 1e-6)
   assert.equal(probe.ceiling(0, 0, 1.9, 0.1), Infinity)
 })
+
+test('cached ground candidates remain correct across distant cells and refreshes', () => {
+  const { scene, street, probe } = world()
+  assert.ok(Number.isFinite(probe.ground(0, 0, 1)))
+  assert.equal(probe.ground(100, 100, 1), -Infinity)
+  assert.ok(Number.isFinite(probe.ground(0, 0, 1)))
+  street.position.set(100, 0.2, 100)
+  probe.refresh(scene)
+  assert.equal(probe.ground(0, 0, 1), -Infinity)
+  assert.ok(Number.isFinite(probe.ground(100, 100, 1)))
+})

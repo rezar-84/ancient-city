@@ -5,6 +5,10 @@ export type Mode = 'intro' | 'explore' | 'plan' | 'tour' | 'walk' | 'choose'
 export const timeGated = (m: Mode) => m === 'plan' || m === 'walk'
 export type Era = 'ancient' | 'today'
 export type Lang = 'en' | 'tr'
+export type WalkOverlay = 'map' | 'settings' | null
+
+export const walkInputBlocked = (s: { mode: Mode; walkPaused: boolean; selected: string | null; walkOverlay: WalkOverlay }) =>
+  s.mode !== 'walk' || s.walkPaused || s.selected !== null || s.walkOverlay !== null
 
 interface State {
   mode: Mode
@@ -22,6 +26,9 @@ interface State {
   showGrid: boolean
   /** first-person character (walk mode) */
   walkPaused: boolean
+  walkOverlay: WalkOverlay
+  setWalkOverlay: (overlay: WalkOverlay) => void
+  walkEscape: () => void
   walkSession: boolean
   setWalkPaused: (paused: boolean) => void
   setWalkSession: (available: boolean) => void
@@ -60,15 +67,18 @@ export const useApp = create<State>((set) => ({
   showPerf: false,
   showGrid: false,
   walkPaused: false,
+  walkOverlay: null,
+  setWalkOverlay: (walkOverlay) => set({ walkOverlay }),
+  walkEscape: () => set((s) => s.walkOverlay ? { walkOverlay: null } : s.selected ? { selected: null } : { walkPaused: !s.walkPaused }),
   walkSession: false,
-  setWalkPaused: (walkPaused) => set({ walkPaused }),
+  setWalkPaused: (walkPaused) => set((s) => ({ walkPaused, walkOverlay: walkPaused ? null : s.walkOverlay })),
   setWalkSession: (walkSession) => set({ walkSession }),
   character: null,
   setCharacter: (character) => set({ character }),
   setShowGrid: (showGrid) => set({ showGrid }),
   tiles: 'off',
   setTiles: (tiles) => set({ tiles }),
-  setMode: (mode) => set({ mode, hovered: null }),
+  setMode: (mode) => set({ mode, hovered: null, walkOverlay: null, walkPaused: false }),
   setEra: (era) => set({ era }),
   setLang: (lang) => { try { localStorage.setItem('lang', lang) } catch { /* ignore */ } set({ lang }) },
   select: (selected) => set({ selected }),

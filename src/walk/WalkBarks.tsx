@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useApp } from '../store'
+import { useApp, walkInputBlocked } from '../store'
 import { BARKS, type Bark } from '../content/barks'
 import { langForYear } from '../content/soundscapes'
 import { playBark } from '../audio/engine'
@@ -18,7 +18,7 @@ export function WalkBarks() {
     const speak = (manual = false) => {
       const now = performance.now()
       const s = useApp.getState()
-      if (s.walkPaused || s.selected || document.querySelector('[data-fastmap]') || now - last < (manual ? 2500 : 7000)) return
+      if (walkInputBlocked(s) || now - last < (manual ? 2500 : 7000)) return
       if (manual) walk.waveUntil = now + 2200
       let best = -1, bd = manual ? 5 : 3.5
       for (let i = 0; i < NPC_STATE.count; i++) {

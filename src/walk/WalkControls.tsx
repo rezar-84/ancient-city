@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { useApp } from '../store'
+import { useApp, walkInputBlocked } from '../store'
 import { getTerrain, loadTerrain } from '../scene/terrainData'
 import { rig } from '../scene/camera'
 import { GRID_AXES, HOUSE_RECTS, STREET_SEGS } from '../scene/CityGrid'
@@ -155,7 +155,7 @@ export function WalkControls() {
     const down = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement | null)?.tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA') return
-      if (useApp.getState().walkPaused || useApp.getState().selected || document.querySelector('[data-fastmap]')) return
+      if (walkInputBlocked(useApp.getState())) return
       const k = e.key.toLowerCase()
       if (k === 'g' && !e.repeat) window.dispatchEvent(new Event('walk:greet'))
       if (k === 'w' && !e.repeat) {
@@ -174,14 +174,14 @@ export function WalkControls() {
       if (k === 'w') st.current.sprintLatch = false
     }
     const blur = () => { keys.clear(); walk.joy.x = walk.joy.y = 0; useApp.getState().setWalkPaused(true) }
-    const click = () => { if (useApp.getState().walkPaused || useApp.getState().selected) return; if (!document.pointerLockElement && window.matchMedia('(pointer: fine)').matches) void el.requestPointerLock() }
+    const click = () => { if (walkInputBlocked(useApp.getState())) return; if (!document.pointerLockElement && window.matchMedia('(pointer: fine)').matches) void el.requestPointerLock() }
     const lockChange = () => {
       const wasLocked = walk.locked
       walk.locked = document.pointerLockElement === el
-      if (wasLocked && !walk.locked && !useApp.getState().selected && !document.querySelector('[data-fastmap]')) blur()
+      if (wasLocked && !walk.locked && !walkInputBlocked(useApp.getState())) blur()
     }
     const move = (e: MouseEvent) => {
-      if (document.pointerLockElement !== el || useApp.getState().walkPaused) return
+      if (document.pointerLockElement !== el || walkInputBlocked(useApp.getState())) return
       walk.yaw -= e.movementX * 0.0022
       walk.pitch = THREE.MathUtils.clamp(walk.pitch - e.movementY * 0.0022, -1.25, 1.25)
     }
@@ -193,7 +193,7 @@ export function WalkControls() {
       }
     }
     const tm = (e: TouchEvent) => {
-      if (useApp.getState().walkPaused || useApp.getState().selected) return
+      if (walkInputBlocked(useApp.getState())) return
       for (const t of Array.from(e.changedTouches)) if (t.identifier === touchId) {
         walk.yaw -= (t.clientX - lx) * 0.005
         walk.pitch = THREE.MathUtils.clamp(walk.pitch - (t.clientY - ly) * 0.004, -1.1, 1.1)
@@ -203,11 +203,11 @@ export function WalkControls() {
     const te = (e: TouchEvent) => { for (const t of Array.from(e.changedTouches)) if (t.identifier === touchId) touchId = null }
     window.addEventListener('keydown', down); window.addEventListener('keyup', up); window.addEventListener('blur', blur)
     el.addEventListener('click', click); document.addEventListener('pointerlockchange', lockChange); document.addEventListener('mousemove', move)
-    el.addEventListener('touchstart', ts, { passive: true }); el.addEventListener('touchmove', tm, { passive: true }); el.addEventListener('touchend', te)
+    el.addEventListener('touchstart', ts, { passive: true }); el.addEventListener('touchmove', tm, { passive: true }); el.addEventListener('touchend', te); el.addEventListener('touchcancel', te)
     return () => {
       window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); window.removeEventListener('blur', blur)
       el.removeEventListener('click', click); document.removeEventListener('pointerlockchange', lockChange); document.removeEventListener('mousemove', move)
-      el.removeEventListener('touchstart', ts); el.removeEventListener('touchmove', tm); el.removeEventListener('touchend', te)
+      el.removeEventListener('touchstart', ts); el.removeEventListener('touchmove', tm); el.removeEventListener('touchend', te); el.removeEventListener('touchcancel', te)
     }
   }, [active, gl])
 
@@ -218,7 +218,7 @@ export function WalkControls() {
     if (!active || !probeReady.current) return
     const t = getTerrain()
     if (!t) return
-    if (useApp.getState().walkPaused || useApp.getState().selected || document.querySelector('[data-fastmap]')) {
+    if (walkInputBlocked(useApp.getState())) {
       keys.clear(); walk.joy.x = walk.joy.y = 0; walk.jumpPressed = false
       walk.vx = walk.vz = walk.speed = 0; walk.moving = false
       st.current.buffer = 0; st.current.sprintLatch = false
