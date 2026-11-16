@@ -25,10 +25,12 @@ export function standPoint(id: string) {
 }
 
 let fadeEl: HTMLDivElement | null = null
+let travelVersion = 0
 /** fade to black, move, fade back */
 export function travelTo(id: string) {
   const p = standPoint(id)
   if (!p) return
+  const version = ++travelVersion
   if (!fadeEl) {
     fadeEl = document.createElement('div')
     Object.assign(fadeEl.style, { position: 'fixed', inset: '0', background: '#0b0806', opacity: '0', pointerEvents: 'none', transition: 'opacity .35s ease', zIndex: '60' })
@@ -36,8 +38,10 @@ export function travelTo(id: string) {
   }
   fadeEl.style.opacity = '1'
   window.setTimeout(() => {
+    if (version !== travelVersion) return
+    if (useApp.getState().mode !== 'walk') { if (fadeEl) fadeEl.style.opacity = '0'; return }
     teleport(p.x, p.z, p.yaw)
-    window.setTimeout(() => { if (fadeEl) fadeEl.style.opacity = '0' }, 180)
+    window.setTimeout(() => { if (fadeEl && version === travelVersion) fadeEl.style.opacity = '0' }, 180)
   }, 380)
 }
 
@@ -53,7 +57,7 @@ export function FastTravel() {
     if (!active) { setOpen(false); return }
     const key = (ev: KeyboardEvent) => {
       const tag = (ev.target as HTMLElement | null)?.tagName
-      if (tag === 'INPUT') return
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || useApp.getState().walkPaused) return
       if (ev.key.toLowerCase() === 'm') {
         setOpen((o) => { if (!o && document.pointerLockElement) void document.exitPointerLock(); return !o })
       }
@@ -67,7 +71,7 @@ export function FastTravel() {
     const openEv = () => setOpen(true)
     window.addEventListener('keydown', key)
     window.addEventListener('walk:map', openEv)
-    return () => { window.removeEventListener('keydown', key); window.removeEventListener('walk:map', openEv) }
+    return () => { travelVersion++; if (fadeEl) fadeEl.style.opacity = '0'; window.removeEventListener('keydown', key); window.removeEventListener('walk:map', openEv) }
   }, [active])
 
   if (!active || !open) return null

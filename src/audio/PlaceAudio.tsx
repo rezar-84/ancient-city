@@ -113,8 +113,10 @@ export function PlaceAudio() {
       playOneShot(`step-${surf}-${1 + Math.floor(Math.random() * 4)}`, 'places', 0.55 * k, alt ? 0.12 : -0.12, 0.92 + Math.random() * 0.16)
     }
     const land = (v: number) => playOneShot('land', 'places', Math.min(1, 0.4 + v / 10))
+    const jump = () => playOneShot(`step-${walk.surface}-1`, 'places', 0.25, 0, 1.12)
+    walk.onJump.add(jump)
     walk.onStep.add(step); walk.onLand.add(land)
-    return () => { walk.onStep.delete(step); walk.onLand.delete(land) }
+    return () => { walk.onJump.delete(jump); walk.onStep.delete(step); walk.onLand.delete(land) }
   }, [])
 
   // event sounds

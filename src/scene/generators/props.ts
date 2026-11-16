@@ -24,13 +24,13 @@ class Parts {
     }) };
   }
 }
-// Four-sided pointed vessel, narrow neck, flared mouth and two ribbon handles: 28 triangles.
+// Shared eight-sided vessel with a flared lip and solid loop handles.
 function amphora() {
   const body = new THREE.LatheGeometry([
     new THREE.Vector2(0, 0), new THREE.Vector2(0.22, 0.32),
     new THREE.Vector2(0.085, 0.58), new THREE.Vector2(0.12, 0.68),
-  ], 4);
-  const handles = [-1, 1].map(s => new THREE.PlaneGeometry(0.16, 0.23).translate(s * 0.15, 0.49, 0));
+  ], 8);
+  const handles = [-1, 1].map(s => new THREE.TorusGeometry(0.095, 0.018, 4, 8).scale(0.75, 1.2, 1).translate(s * 0.15, 0.49, 0));
   const pieces = [body, ...handles].map(g => { const flat = g.toNonIndexed(); g.dispose(); return flat; });
   const result = mergeGeometries(pieces, false)!;
   pieces.forEach(g => g.dispose()); return result;
@@ -43,6 +43,11 @@ export function marketStall(variant: 0 | 1 | 2): PropParts {
   p.box('ground', 2.6, 0.12, 0.12, 0, 2.24, -0.82, '#705038');
   p.box('ground', 2.45, 0.85, 0.6, 0, 0.425, 0.5, '#906b46');
   p.add('plaster', new THREE.PlaneGeometry(2.6, 1.82).rotateX(-Math.PI / 2).rotateX(-0.14).translate(0, 2.17, 0));
+  // Awning hems and counter planks add readable close-range structure.
+  for (let i = 0; i < 7; i++) {
+    p.box('plaster', 0.36, 0.16, 0.035, -1.08 + i * 0.36, 1.99, 0.9, i % 2 ? '#a8664b' : '#e2cfaa');
+    p.box('ground', 0.32, 0.035, 0.63, -1.02 + i * 0.34, 0.87, 0.5, i % 2 ? '#866442' : '#a67c50');
+  }
   for (let i = 0; i < 3; i++) {
     const x = (i - 1) * 0.68;
     if (variant === 0) {

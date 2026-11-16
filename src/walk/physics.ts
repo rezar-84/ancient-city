@@ -32,7 +32,7 @@ export class WorldProbe {
 
   refresh(scene: THREE.Scene) {
     this.entries = []
-    const roots = [scene.getObjectByName('city-root'), scene.getObjectByName('ruins-solid')].filter(Boolean) as THREE.Object3D[]
+    const roots = [scene.getObjectByName('city-root'), scene.getObjectByName('ruins-solid'), scene.getObjectByName('walk-streets')].filter(Boolean) as THREE.Object3D[]
     for (const root of roots) {
       root.updateWorldMatrix(true, true)
       root.traverse((o) => {
@@ -81,6 +81,22 @@ export class WorldProbe {
     return h ? h.point.y : -Infinity
   }
 
+  /** Head clearance for jumping beneath balconies and porticoes. */
+  ceiling(x: number, z: number, headY: number, rise: number) {
+    this.v.set(x, headY, z); this.d.set(0, 1, 0)
+    const hit = this.cast(this.v, this.d, rise, x, z)
+    return hit ? hit.point.y : Infinity
+  }
+
+  /** Clip a third-person camera boom before it passes through solid geometry. */
+  cameraDistance(origin: THREE.Vector3, offset: THREE.Vector3) {
+    const distance = offset.length()
+    if (distance < 0.001) return 0
+    this.d.copy(offset).normalize()
+    const hit = this.cast(origin, this.d, distance, origin.x, origin.z)
+    return hit ? Math.max(0, hit.distance - 0.2) : distance
+  }
+
   /** horizontal obstacle within `dist` along (dx, dz) at height y; returns the world normal or null */
   wall(x: number, y: number, z: number, dx: number, dz: number, dist: number, out: THREE.Vector3) {
     const len = Math.hypot(dx, dz)
@@ -88,7 +104,13 @@ export class WorldProbe {
     this.v.set(x, y, z); this.d.set(dx / len, 0, dz / len)
     const h = this.cast(this.v, this.d, dist, x, z)
     if (!h || !h.face) return null
-    out.copy(h.face.normal).transformDirection(h.object.matrixWorld)
+    out.copy(h.face.normal)
+    if (h.instanceId !== undefined && h.object instanceof THREE.InstancedMesh) {
+      const instance = new THREE.Matrix4()
+      h.object.getMatrixAt(h.instanceId, instance)
+      out.applyNormalMatrix(new THREE.Matrix3().getNormalMatrix(instance))
+    }
+    out.applyNormalMatrix(new THREE.Matrix3().getNormalMatrix(h.object.matrixWorld))
     out.y = 0
     if (out.lengthSq() < 1e-4) out.set(-this.d.x, 0, -this.d.z)
     return out.normalize()

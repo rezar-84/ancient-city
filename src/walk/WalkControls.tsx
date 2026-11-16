@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useApp } from '../store'
-import { getTerrain } from '../scene/terrainData'
+import { getTerrain, loadTerrain } from '../scene/terrainData'
 import { rig } from '../scene/camera'
 import { GRID_AXES, HOUSE_RECTS, STREET_SEGS } from '../scene/CityGrid'
 import { CHARACTERS } from '../content/characters'
@@ -27,9 +27,11 @@ export const walk = {
   /** virtual joystick (mobile), -1..1, and on-screen jump button */
   joy: { x: 0, y: 0 }, jumpPressed: false,
   locked: false,
+  waveUntil: 0,
   surface: 'stone' as Surface,
   /** listeners: footstep (surface, intensity) and landing (fall speed) */
   onStep: new Set<(s: Surface, k: number) => void>(),
+  onJump: new Set<() => void>(),
   onLand: new Set<(v: number) => void>(),
 }
 
@@ -45,7 +47,7 @@ const keys = new Set<string>()
 function buildHouseHash() {
   const cell = 24, map = new Map<string, number[]>()
   HOUSE_RECTS.forEach((r, i) => {
-    const ext = Math.max(r.hu, r.hv)
+    const ext = Math.hypot(r.hu, r.hv) + RADIUS
     for (let gx = Math.floor((r.x - ext) / cell); gx <= Math.floor((r.x + ext) / cell); gx++)
       for (let gz = Math.floor((r.z - ext) / cell); gz <= Math.floor((r.z + ext) / cell); gz++) {
         const k = gx + ',' + gz; const a = map.get(k) ?? []; a.push(i); map.set(k, a)
@@ -84,16 +86,25 @@ export function WalkControls() {
   const houses = useRef<(x: number, z: number) => boolean>(() => false)
   const st = useRef({ bob: 0, coyote: 0, buffer: 0, dip: 0, lastTapW: 0, sprintLatch: false, stepPhase: 0, camDist: 0 })
   const active = mode === 'walk'
+  const probeReady = useRef(false)
+  const [terrainReady, setTerrainReady] = useState(() => !!getTerrain())
+  useEffect(() => {
+    let mounted = true
+    void loadTerrain().then(() => { if (mounted) setTerrainReady(true) }).catch(() => { /* scene loader owns the terrain error */ })
+    return () => { mounted = false }
+  }, [])
 
   // (re)build collision data when the city changes (city layer, era)
   useEffect(() => {
-    if (!active) return
+    if (!active || !terrainReady) return
+    probeReady.current = false
     const id = window.setTimeout(() => {
       houses.current = buildHouseHash()
       probe.refresh(scene)
+      probeReady.current = true
       // never start inside something: spiral out to the nearest free spot
       const t = getTerrain()
-      if (t && blockedAt(walk.x, walk.z, t.heightAt(walk.x, walk.z))) {
+      if (t && blockedAt(walk.x, walk.z, walk.feet)) {
         search: for (let r = 2; r <= 60; r += 2) for (let a = 0; a < Math.PI * 2; a += Math.PI / 8) {
           const x = walk.x + Math.cos(a) * r, z = walk.z + Math.sin(a) * r
           if (!blockedAt(x, z, t.heightAt(x, z))) { walk.x = x; walk.z = z; break search }
@@ -102,7 +113,7 @@ export function WalkControls() {
     }, 350)
     return () => window.clearTimeout(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, showGrid, year])
+  }, [active, showGrid, year, terrainReady])
 
   /** a spot is blocked if inside a house or if a monument surface towers above the feet */
   function blockedAt(x: number, z: number, feet: number) {
@@ -113,13 +124,16 @@ export function WalkControls() {
 
   // enter / leave
   useEffect(() => {
-    if (!active) return
+    if (!active || !terrainReady) return
     const cam = camera as THREE.PerspectiveCamera
     const t = getTerrain(), c = CHARACTERS.find((x) => x.id === character) ?? CHARACTERS[2]
     if (!t) return
-    const [x, z] = t.toLocal(c.spawn.lat, c.spawn.lon)
-    Object.assign(walk, { x, z, vx: 0, vz: 0, vy: 0, grounded: true, yaw: -THREE.MathUtils.degToRad(c.spawn.heading), pitch: 0 })
-    walk.feet = t.heightAt(x, z)
+    const resume = useApp.getState().walkSession
+    const [x, z] = resume ? [walk.x, walk.z] : t.toLocal(c.spawn.lat, c.spawn.lon)
+    Object.assign(walk, { x, z, vx: 0, vz: 0, vy: 0, grounded: true, yaw: resume ? walk.yaw : -THREE.MathUtils.degToRad(c.spawn.heading), pitch: resume ? walk.pitch : 0 })
+    walk.feet = resume ? Math.max(walk.feet, t.heightAt(x, z)) : t.heightAt(x, z)
+    useApp.getState().setWalkSession(true)
+    useApp.getState().setWalkPaused(false)
     camera.position.set(x, walk.feet + EYE, z)
     const prev = { fov: cam.fov, near: cam.near }
     cam.fov = 70; cam.near = 0.08; cam.updateProjectionMatrix()
@@ -130,9 +144,9 @@ export function WalkControls() {
       cam.fov = prev.fov; cam.near = prev.near; cam.updateProjectionMatrix()
       if (rig.controls) rig.controls.enabled = true
       if (document.pointerLockElement) void document.exitPointerLock()
-      keys.clear(); walk.joy.x = walk.joy.y = 0; walk.view = 'first'
+      pendingTeleport = null; keys.clear(); walk.joy.x = walk.joy.y = 0; walk.moving = false; walk.speed = 0; walk.jumpPressed = false
     }
-  }, [active, character, camera])
+  }, [active, character, camera, terrainReady])
 
   // input
   useEffect(() => {
@@ -141,7 +155,9 @@ export function WalkControls() {
     const down = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement | null)?.tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA') return
+      if (useApp.getState().walkPaused || useApp.getState().selected || document.querySelector('[data-fastmap]')) return
       const k = e.key.toLowerCase()
+      if (k === 'g' && !e.repeat) window.dispatchEvent(new Event('walk:greet'))
       if (k === 'w' && !e.repeat) {
         const now = performance.now()
         if (now - st.current.lastTapW < 280) st.current.sprintLatch = true
@@ -157,11 +173,15 @@ export function WalkControls() {
       keys.delete(k)
       if (k === 'w') st.current.sprintLatch = false
     }
-    const blur = () => keys.clear()
-    const click = () => { if (!document.pointerLockElement && window.matchMedia('(pointer: fine)').matches) void el.requestPointerLock() }
-    const lockChange = () => { walk.locked = document.pointerLockElement === el }
+    const blur = () => { keys.clear(); walk.joy.x = walk.joy.y = 0; useApp.getState().setWalkPaused(true) }
+    const click = () => { if (useApp.getState().walkPaused || useApp.getState().selected) return; if (!document.pointerLockElement && window.matchMedia('(pointer: fine)').matches) void el.requestPointerLock() }
+    const lockChange = () => {
+      const wasLocked = walk.locked
+      walk.locked = document.pointerLockElement === el
+      if (wasLocked && !walk.locked && !useApp.getState().selected && !document.querySelector('[data-fastmap]')) blur()
+    }
     const move = (e: MouseEvent) => {
-      if (document.pointerLockElement !== el) return
+      if (document.pointerLockElement !== el || useApp.getState().walkPaused) return
       walk.yaw -= e.movementX * 0.0022
       walk.pitch = THREE.MathUtils.clamp(walk.pitch - e.movementY * 0.0022, -1.25, 1.25)
     }
@@ -173,6 +193,7 @@ export function WalkControls() {
       }
     }
     const tm = (e: TouchEvent) => {
+      if (useApp.getState().walkPaused || useApp.getState().selected) return
       for (const t of Array.from(e.changedTouches)) if (t.identifier === touchId) {
         walk.yaw -= (t.clientX - lx) * 0.005
         walk.pitch = THREE.MathUtils.clamp(walk.pitch - (t.clientY - ly) * 0.004, -1.1, 1.1)
@@ -194,9 +215,15 @@ export function WalkControls() {
   const n = useMemo(() => new THREE.Vector3(), [])
   const back = useMemo(() => new THREE.Vector3(), [])
   useFrame((_, rawDt) => {
-    if (!active) return
+    if (!active || !probeReady.current) return
     const t = getTerrain()
     if (!t) return
+    if (useApp.getState().walkPaused || useApp.getState().selected || document.querySelector('[data-fastmap]')) {
+      keys.clear(); walk.joy.x = walk.joy.y = 0; walk.jumpPressed = false
+      walk.vx = walk.vz = walk.speed = 0; walk.moving = false
+      st.current.buffer = 0; st.current.sprintLatch = false
+      return
+    }
     const dt = Math.min(rawDt, 0.05)
     const S = st.current
 
@@ -241,9 +268,10 @@ export function WalkControls() {
     if (walk.jumpPressed) { S.buffer = BUFFER; walk.jumpPressed = false }
     S.buffer = Math.max(0, S.buffer - dt)
     S.coyote = walk.grounded ? COYOTE : Math.max(0, S.coyote - dt)
-    if (S.buffer > 0 && S.coyote > 0) { walk.vy = JUMP_V; walk.grounded = false; S.buffer = 0; S.coyote = 0 }
+    if (S.buffer > 0 && S.coyote > 0) { walk.vy = JUMP_V; walk.grounded = false; S.buffer = 0; S.coyote = 0; walk.onJump.forEach(cb => cb()) }
 
     // ---- horizontal move with wall sliding (knee + chest rays) and step-up
+    const beforeX = walk.x, beforeZ = walk.z
     let mx = walk.vx * dt, mz = walk.vz * dt
     const md = Math.hypot(mx, mz)
     if (md > 1e-5) {
@@ -272,22 +300,26 @@ export function WalkControls() {
     const terrainY = t.heightAt(walk.x, walk.z)
     const solidY = probe.ground(walk.x, walk.z, walk.feet + STEP + 0.05)
     const support = Math.max(terrainY, solidY)
+    if (walk.vy > 0) {
+      const ceiling = probe.ceiling(walk.x, walk.z, walk.feet + 1.68, walk.vy * dt + 0.05)
+      if (ceiling < Infinity) walk.vy = 0
+    }
     walk.vy -= GRAVITY * dt
     let feet = walk.feet + walk.vy * dt
     const wasAir = !walk.grounded
     if (feet <= support) {
       if (wasAir && walk.vy < -3) { S.dip = Math.min(0.22, -walk.vy * 0.03); walk.onLand.forEach((cb) => cb(-walk.vy)) }
-      feet = walk.grounded ? THREE.MathUtils.lerp(walk.feet, support, Math.min(1, dt * 18)) : support
+      feet = support
       walk.vy = 0; walk.grounded = true
     } else if (walk.grounded && feet - support < 0.35 && walk.vy <= 0) {
       // walking down steps / slopes: stick to the ground
-      feet = THREE.MathUtils.lerp(walk.feet, support, Math.min(1, dt * 14)); walk.vy = 0
+      feet = support; walk.vy = 0
     } else walk.grounded = false
     walk.feet = feet
 
     // ---- surface + footsteps
     walk.surface = solidY >= terrainY - 0.05 && solidY > -Infinity ? 'stone' : onStreet(walk.x, walk.z) ? 'stone' : inCity(walk.x, walk.z, t) ? 'gravel' : 'grass'
-    const hs = Math.hypot(walk.vx, walk.vz)
+    const hs = Math.hypot(walk.x - beforeX, walk.z - beforeZ) / Math.max(dt, 0.0001)
     walk.speed = hs; walk.moving = hs > 0.3
     if (walk.grounded && walk.moving) {
       const cadence = 1.55 + hs * 0.32 // steps per second
@@ -305,7 +337,12 @@ export function WalkControls() {
     camera.quaternion.setFromEuler(euler)
     S.camDist += ((walk.view === 'third' ? 3.4 : 0) - S.camDist) * Math.min(1, dt * 6)
     back.set(0, 0, 1).applyQuaternion(camera.quaternion).multiplyScalar(S.camDist)
-    camera.position.set(walk.x + back.x, eyeY + back.y + (S.camDist > 0.1 ? 0.35 : 0), walk.z + back.z)
+    if (S.camDist > 0.1) {
+      n.set(walk.x, eyeY, walk.z)
+      back.y += 0.35
+      back.setLength(probe.cameraDistance(n, back))
+    }
+    camera.position.set(walk.x + back.x, eyeY + back.y, walk.z + back.z)
     // keep the third-person camera above ground
     const camGround = t.heightAt(camera.position.x, camera.position.z) + 0.3
     if (camera.position.y < camGround) camera.position.y = camGround

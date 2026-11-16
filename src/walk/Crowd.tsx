@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { Terrain } from '../scene/terrainData'
 import { GRID } from '../content/grid'
@@ -9,6 +9,7 @@ import { useApp } from '../store'
 import { createCartGeometry, createCrowdAttributes, createHorseGeometry, createPersonGeometry, ERA_PALETTES, patchCrowdMaterial, SKIN_TONES } from './npcGeometry'
 import { gridFrame, stallSpots } from './spots'
 import { walk } from './WalkControls'
+import { WorldProbe } from './physics'
 
 type Variant = 'greek' | 'roman' | 'byzantine'
 const variantFor = (year: number): Variant => (year < -133 ? 'greek' : year < 330 ? 'roman' : 'byzantine')
@@ -33,12 +34,30 @@ export const NPC_STATE: { x: Float32Array; z: Float32Array; count: number; femal
 
 export function Crowd({ terrain }: { terrain: Terrain }) {
   const mode = useApp((s) => s.mode)
+  const scene = useThree(s => s.scene)
+  const probe = useMemo(() => new WorldProbe(), [])
+  const groundCache = useRef(new Map<number, { x: number; z: number; y: number }>())
   const era = useApp((s) => s.era)
   const showGrid = useApp((s) => s.showGrid)
   const year = useApp((s) => s.year)
   const character = useApp((s) => s.character)
   const variant: Variant = mode === 'walk' || mode === 'plan' ? variantFor(year) : 'roman'
   const visible = era === 'ancient' && (mode === 'walk' || (mode === 'explore' && showGrid) || mode === 'tour')
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => { probe.refresh(scene); groundCache.current.clear() }, 400)
+    return () => window.clearTimeout(timer)
+  }, [scene, probe, year, showGrid, mode])
+  const surfaceY = (x: number, z: number, id: number) => {
+    const terrainY = terrain.heightAt(x, z)
+    const cached = groundCache.current.get(id)
+    if (!cached || Math.hypot(x - cached.x, z - cached.z) > 0.35) {
+      const y = Math.max(terrainY, probe.ground(x, z, terrainY + 2.5))
+      groundCache.current.set(id, { x, z, y })
+      return y + 0.015
+    }
+    return Math.max(terrainY, cached.y) + 0.015
+  }
 
   const sim = useMemo(() => {
     const F = gridFrame(terrain)
@@ -140,8 +159,14 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
     const horses = new THREE.InstancedMesh(hGeo, hMat, nCarts)
     const cartMesh = new THREE.InstancedMesh(cGeo, cMat, nCarts)
     for (const m of [people, horses, cartMesh]) { m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage) }
+    const depthMats = ([['person', people], ['horse', horses], ['cart', cartMesh]] as const).map(([kind, mesh]) => {
+      const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking })
+      patchCrowdMaterial(depth, kind)
+      mesh.customDepthMaterial = depth
+      return depth
+    })
     NPC_STATE.x = new Float32Array(npcs.length); NPC_STATE.z = new Float32Array(npcs.length); NPC_STATE.count = npcs.length; NPC_STATE.female = female
-    return { F, npcs, carts, people, horses, cartMesh, pAttr, hAttr, cAttr, mats: [pMat, hMat, cMat] }
+    return { F, npcs, carts, people, horses, cartMesh, pAttr, hAttr, cAttr, mats: [pMat, hMat, cMat, ...depthMats] }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [terrain, variant, character, mode === 'walk' ? year : 0])
 
@@ -160,7 +185,8 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
 
   useFrame((_, rawDt) => {
     if (!visible) return
-    const dt = Math.min(rawDt, 0.1); clock.current += dt
+    const paused = mode === 'walk' && (useApp.getState().walkPaused || !!useApp.getState().selected || !!document.querySelector('[data-fastmap]'))
+    const dt = paused ? 0 : Math.min(rawDt, 0.1); clock.current += dt
     const { F, npcs, carts, people, horses, cartMesh, pAttr, hAttr, cAttr, mats } = sim
     for (const m of mats) (m.userData.uTime as { value: number }).value = clock.current
     const walking = mode === 'walk'
@@ -193,33 +219,38 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
       let look = 0
       if (walking) {
         const dx = px - x, dz = pz - z, d = Math.hypot(dx, dz)
-        if (d < 5) { look = THREE.MathUtils.clamp(Math.atan2(dx, dz) - yaw, -1, 1); look = Math.atan2(Math.sin(look), Math.cos(look)) }
+        if (d < 5) { const angle = Math.atan2(dx, dz) - yaw; look = THREE.MathUtils.clamp(Math.atan2(Math.sin(angle), Math.cos(angle)), -1, 1) }
       }
       n.look += (look - n.look) * Math.min(1, dt * 4)
-      pAttr.anim.setXYZW(i, n.phase, gait, n.pose, THREE.MathUtils.clamp(n.look, -1, 1))
+      const replying = walking && performance.now() < walk.waveUntil && Math.hypot(px - x, pz - z) < 5
+      pAttr.anim.setXYZW(i, n.phase, gait, replying ? 1 : n.pose, THREE.MathUtils.clamp(n.look, -1, 1))
       NPC_STATE.x[i] = x; NPC_STATE.z[i] = z
-      pos.set(x, terrain.heightAt(x, z), z)
+      pos.set(x, surfaceY(x, z, i), z)
       q.setFromAxisAngle(up, yaw)
+      const stature = 0.94 + ((i * 0.381966) % 1) * 0.13
+      const build = 0.9 + ((i * 0.618034) % 1) * 0.22
+      one.set(build, stature, build)
       m4.compose(pos, q, one); people.setMatrixAt(i, m4)
     })
     // the player's own figure (third person)
+    one.set(1, 1, 1)
     const av = npcs.length
     if (walking && walk.view === 'third') {
       pos.set(walk.x, walk.feet, walk.z); q.setFromAxisAngle(up, walk.yaw + Math.PI)
       m4.compose(pos, q, one)
-      pAttr.anim.setXYZW(av, 0, walk.speed < 0.3 ? 0 : walk.speed > 4 ? 1 : 0.5, 0, 0)
+      pAttr.anim.setXYZW(av, 0, walk.speed < 0.3 ? 0 : walk.speed > 4 ? 1 : 0.5, performance.now() < walk.waveUntil ? 1 : 0, 0)
     } else m4.compose(hidden, q.identity(), one)
     people.setMatrixAt(av, m4)
 
     carts.forEach((cr, i) => {
       cr.u += cr.dir * cr.speed * dt; if (cr.u > F.L - 30 || cr.u < 30) cr.dir *= -1
       const [x, z] = F.P(cr.u, cr.v)
-      pos.set(x, terrain.heightAt(x, z), z)
+      pos.set(x, surfaceY(x, z, npcs.length + 1 + i * 2), z)
       q.setFromAxisAngle(up, F.yawU + (cr.dir > 0 ? 0 : Math.PI))
       m4.compose(pos, q, one); horses.setMatrixAt(i, m4)
       // cart trails 2.6 m behind the horse
       const [cx, cz] = F.P(cr.u - cr.dir * 2.6, cr.v)
-      pos.set(cx, terrain.heightAt(cx, cz), cz); m4.compose(pos, q, one); cartMesh.setMatrixAt(i, m4)
+      pos.set(cx, surfaceY(cx, cz, npcs.length + 2 + i * 2), cz); m4.compose(pos, q, one); cartMesh.setMatrixAt(i, m4)
     })
     people.instanceMatrix.needsUpdate = true; horses.instanceMatrix.needsUpdate = true; cartMesh.instanceMatrix.needsUpdate = true
     pAttr.anim.needsUpdate = true; hAttr.anim.needsUpdate = true; cAttr.anim.needsUpdate = true

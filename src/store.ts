@@ -21,6 +21,10 @@ interface State {
   /** whole-city layer: street grid, houses, mapped ruins */
   showGrid: boolean
   /** first-person character (walk mode) */
+  walkPaused: boolean
+  walkSession: boolean
+  setWalkPaused: (paused: boolean) => void
+  setWalkSession: (available: boolean) => void
   character: string | null
   setCharacter: (id: string | null) => void
   setShowGrid: (v: boolean) => void
@@ -55,6 +59,10 @@ export const useApp = create<State>((set) => ({
   arOpen: false,
   showPerf: false,
   showGrid: false,
+  walkPaused: false,
+  walkSession: false,
+  setWalkPaused: (walkPaused) => set({ walkPaused }),
+  setWalkSession: (walkSession) => set({ walkSession }),
   character: null,
   setCharacter: (character) => set({ character }),
   setShowGrid: (showGrid) => set({ showGrid }),

@@ -11,30 +11,57 @@ export const capturePipeline: { render: (() => void) | null; busy: boolean } = {
 type GL = THREE.WebGLRenderer
 export function installCapture(gl: GL, scene: THREE.Scene) {
   if (!import.meta.env.DEV) return
+  let benchmarking = false
   ;(window as unknown as { __benchmark: () => Promise<unknown> }).__benchmark = async () => {
+    if (benchmarking || capturePipeline.busy) throw new Error('A benchmark or capture is already running.')
+    if (document.hidden) throw new Error('Keep this tab visible while benchmarking.')
+    benchmarking = true
     const frames: number[] = []
-    let previous = performance.now()
-    const start = previous
-    await new Promise<void>(resolve => {
-      const sample = (now: number) => {
-        frames.push(now - previous); previous = now
-        if (now - start < 20000) requestAnimationFrame(sample)
-        else resolve()
+    const dprs = new Set<number>()
+    const effects = new Set<boolean>()
+    let interrupted = false
+    const visibilityChanged = () => { if (document.hidden) interrupted = true }
+    document.addEventListener('visibilitychange', visibilityChanged)
+    try {
+      // Use RAF timestamps for both endpoints; discard the first partial frame.
+      await new Promise<void>((resolve, reject) => {
+        let previous: number | undefined
+        let start = 0
+        const sample = (now: number) => {
+          if (interrupted || capturePipeline.busy) {
+            reject(new Error('Benchmark interrupted by a hidden tab or capture. Run it again.'))
+            return
+          }
+          if (previous === undefined) start = now
+          else frames.push(now - previous)
+          previous = now
+          dprs.add(gl.getPixelRatio())
+          effects.add(capturePipeline.render !== null)
+          if (now - start < 20000) requestAnimationFrame(sample)
+          else resolve()
+        }
+        requestAnimationFrame(sample)
+      })
+      frames.sort((a, b) => a - b)
+      return {
+        medianMs: frames[Math.floor(frames.length * 0.5)],
+        p95Ms: frames[Math.min(frames.length - 1, Math.ceil(frames.length * 0.95) - 1)],
+        frames: frames.length,
+        dprRange: [Math.min(...dprs), Math.max(...dprs)],
+        effects: [...effects],
+        qualityChanged: dprs.size > 1 || effects.size > 1,
+        render: { ...gl.info.render }, memory: { ...gl.info.memory },
+        viewport: { width: gl.domElement.width, height: gl.domElement.height },
+        note: 'Render counters represent the latest pass; frame timings include the complete pipeline.',
       }
-      requestAnimationFrame(sample)
-    })
-    frames.sort((a, b) => a - b)
-    return {
-      medianMs: frames[Math.floor(frames.length * 0.5)],
-      p95Ms: frames[Math.floor(frames.length * 0.95)],
-      frames: frames.length, dpr: gl.getPixelRatio(),
-      render: { ...gl.info.render }, memory: { ...gl.info.memory },
-      note: 'Render counters represent the latest pass; frame timings include the complete pipeline.',
+    } finally {
+      document.removeEventListener('visibilitychange', visibilityChanged)
+      benchmarking = false
     }
   }
   ;(window as unknown as { __captureRenders: () => Promise<string[]> }).__captureRenders = async () => {
     const t = getTerrain(), cam = rig.camera, ctl = rig.controls
-    if (!t || !cam || !ctl || capturePipeline.busy) return []
+    if (!t || !cam || !ctl || capturePipeline.busy || benchmarking) return []
     capturePipeline.busy = true
     const position = cam.position.clone(), target = ctl.target.clone(), autoRotate = ctl.autoRotate
     const selected = useApp.getState().selected

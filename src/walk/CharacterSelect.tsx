@@ -14,6 +14,8 @@ export function beginWalk(c: Character) {
   startAmbient()
   const s = useApp.getState()
   s.select(null)
+  s.setWalkSession(false)
+  s.setWalkPaused(false)
   s.setCharacter(c.id)
   s.setYear(c.year)
   s.setEra('ancient')
@@ -21,10 +23,20 @@ export function beginWalk(c: Character) {
   s.setMode('walk')
 }
 
+/** Resume the in-memory session without replacing its position or view. */
+export function resumeWalk() {
+  const st = useApp.getState()
+  const c = CHARACTERS.find(c => c.id === st.character)
+  if (!st.walkSession || !c) return
+  st.setYear(c.year); st.setEra('ancient'); st.setShowGrid(true)
+  st.select(null); st.setWalkPaused(false); st.setMode('walk'); startAmbient()
+}
+
 /** "Walk the city": choose a woman or man from one of three periods. */
 export function CharacterSelect() {
   const mode = useApp((s) => s.mode)
   const lang = useApp((s) => s.lang)
+  const session = useApp((s) => s.walkSession)
   const [pick, setPick] = useState<Character>(CHARACTERS[2])
   if (mode !== 'choose') return null
   const eras = ['hellenistic', 'roman', 'byzantine'] as const
@@ -43,6 +55,10 @@ export function CharacterSelect() {
           'Choose who you are. Your period decides which buildings stand, which language you hear, and which music plays.',
           'Kim olduğunu seç. Dönemin hangi yapıların ayakta olduğunu, hangi dili duyacağını ve hangi müziğin çalacağını belirler.')}</p>
 
+        {session && <div className="mt-5 flex flex-wrap items-center gap-3 rounded-xl border border-gold/40 p-4">
+          <p className="flex-1 text-sm">{tr(lang, 'Your walk is saved for this visit. Resume where you left off, or choose a character to start again.', 'Yürüyüşünüz bu ziyaret için saklanır. Kaldığınız yerden devam edin veya yeniden başlamak için bir karakter seçin.')}</p>
+          <button className="btn-gold" onClick={resumeWalk}>{tr(lang, 'Resume walk', 'Yürüyüşe devam et')}</button>
+        </div>}
         <div className="mt-6 grid gap-5 lg:grid-cols-3">
           {eras.map((era) => (
             <section key={era}>
@@ -78,7 +94,7 @@ export function CharacterSelect() {
           <p className="truncate font-display text-base">{pick.name} <span className="text-xs text-travertine/60">· {pick.role[lang]} · {ERA_LABEL[pick.era][lang]}</span></p>
           <p className="line-clamp-2 text-xs text-travertine/75">{pick.bio[lang]}</p>
         </div>
-        <button className="btn-gold shrink-0 px-5 py-2.5" onClick={() => beginWalk(pick)}>{tr(lang, 'Begin', 'Başla')} →</button>
+        <button className="btn-gold shrink-0 px-5 py-2.5" onClick={() => beginWalk(pick)}>{tr(lang, session ? 'Start new walk' : 'Begin', session ? 'Yeni yürüyüş' : 'Başla')} →</button>
       </div>
     </div>
   )

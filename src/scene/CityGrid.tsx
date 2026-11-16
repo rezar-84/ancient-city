@@ -274,7 +274,7 @@ function buildCity(t: Terrain): Built {
   sg.setIndex(idx); sg.computeVertexNormals()
   const streetMat = new THREE.MeshStandardMaterial({ color: GRID.paving, roughness: 0.9, vertexColors: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })
   patchPaving(streetMat, u)
-  const streets = new THREE.Mesh(sg, streetMat); streets.receiveShadow = true; streets.renderOrder = 1
+  const streets = new THREE.Mesh(sg, streetMat); streets.name = 'walk-streets'; streets.receiveShadow = true; streets.renderOrder = 1
 
   // OSM-mapped ruins (houses, gymnasium, nymphaea…) raised as simple masses, unless a detailed model stands there
   const ruinGeos: THREE.BufferGeometry[] = []

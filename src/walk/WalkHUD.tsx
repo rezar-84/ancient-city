@@ -34,12 +34,20 @@ export function WalkHUD() {
   const character = useApp((st) => st.character)
   const year = useApp((st) => st.year)
   const selected = useApp((st) => st.selected)
+  const paused = useApp((st) => st.walkPaused)
+  const pauseDialog = useRef<HTMLDialogElement>(null)
   const [near, setNear] = useState<string | null>(null)
   const [locked, setLocked] = useState(false)
   const [moved, setMoved] = useState(false)
   const dot = useRef<HTMLDivElement>(null)
   const ribbon = useRef<HTMLDivElement>(null)
   const active = mode === 'walk'
+
+  useEffect(() => {
+    const dialog = pauseDialog.current
+    if (active && paused) { if (dialog && !dialog.open) dialog.showModal() }
+    else dialog?.close()
+  }, [active, paused])
 
   useEffect(() => {
     if (!active) return
@@ -72,8 +80,13 @@ export function WalkHUD() {
     raf = requestAnimationFrame(tick)
     const key = (ev: KeyboardEvent) => {
       const k = ev.key.toLowerCase()
-      if (k === 'e' && nearRef.current) interact(nearRef.current)
-      if (k === 'escape' && !document.pointerLockElement && !useApp.getState().selected && !document.querySelector('[data-fastmap]')) exitWalk()
+      if (ev.target instanceof HTMLInputElement || ev.target instanceof HTMLTextAreaElement) return
+      if (k === 'e' && !useApp.getState().walkPaused && nearRef.current) interact(nearRef.current)
+      if (k === 'escape' && !useApp.getState().walkPaused && !document.querySelector('[data-fastmap]')) {
+        const state = useApp.getState()
+        if (state.selected) state.select(null)
+        else { state.setWalkPaused(true); if (document.pointerLockElement) void document.exitPointerLock() }
+      }
     }
     window.addEventListener('keydown', key)
     return () => { cancelAnimationFrame(raf); window.removeEventListener('keydown', key) }
@@ -117,8 +130,20 @@ export function WalkHUD() {
       <div data-walkui className="pointer-events-auto absolute right-2.5 top-[max(0.625rem,env(safe-area-inset-top))] flex items-center gap-2 sm:right-4 sm:top-4">
         <button className="glass btn-ghost" onClick={() => window.dispatchEvent(new Event('walk:map'))} title="M">🗺 <span className="hidden sm:inline">{tr(lang, 'Map', 'Harita')}</span></button>
         <SettingsButton lang={lang} />
-        <button className="glass btn-ghost" onClick={exitWalk}>✕ <span className="hidden sm:inline">{tr(lang, 'Leave', 'Çık')}</span></button>
+        <button className="glass btn-ghost" onClick={() => { useApp.getState().setWalkPaused(true); if (document.pointerLockElement) void document.exitPointerLock() }}>Ⅱ <span className="hidden sm:inline">{tr(lang, 'Pause', 'Duraklat')}</span></button>
       </div>
+
+      <dialog ref={pauseDialog} data-walkui aria-labelledby="walk-pause-title"
+        onCancel={event => { event.preventDefault(); useApp.getState().setWalkPaused(false) }}
+        className="pointer-events-auto m-auto w-[min(90vw,420px)] rounded-2xl border border-gold/30 bg-ink p-6 text-travertine backdrop:bg-black/65">
+        <h2 id="walk-pause-title" className="font-display text-2xl">{tr(lang, 'Walk paused', 'Yürüyüş duraklatıldı')}</h2>
+        <p className="mt-2 text-sm text-travertine/80">{tr(lang, 'Your position is kept for this visit. Resume, then click the scene to look around.', 'Konumunuz bu ziyaret için saklanır. Devam edin, ardından etrafa bakmak için sahneye tıklayın.')}</p>
+        <div className="mt-5 flex flex-col gap-3">
+          <button autoFocus className="btn-gold min-h-11" onClick={() => useApp.getState().setWalkPaused(false)}>{tr(lang, 'Resume walk', 'Yürüyüşe devam et')}</button>
+          <button className="btn-ghost min-h-11" onClick={() => { exitWalk(); useApp.getState().setMode('choose') }}>{tr(lang, 'Choose another character', 'Başka karakter seç')}</button>
+          <button className="btn-ghost min-h-11" onClick={exitWalk}>{tr(lang, 'Return to city map', 'Kent haritasına dön')}</button>
+        </div>
+      </dialog>
 
       {/* crosshair */}
       {locked && <div className="absolute left-1/2 top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/80 shadow" />}
@@ -143,12 +168,15 @@ export function WalkHUD() {
       {/* first-time help */}
       {!moved && !selected && (
         <div className="glass absolute left-1/2 top-1/2 max-w-sm -translate-x-1/2 translate-y-10 rounded-2xl px-5 py-3 text-center text-sm">
-          <p className="hidden sm:block">{tr(lang, 'Click to look around · W A S D walk · Shift run · double-tap W sprint · Space jump · E learn about a place · M map & travel · V third person · Esc free the mouse', 'Bakmak için tıklayın · W A S D yürü · Shift koş · W’ye iki kez bas: depar · Boşluk zıpla · E bilgi · M harita ve yolculuk · V üçüncü şahıs · Esc fareyi bırak')}</p>
+          <p className="hidden sm:block">{tr(lang, 'Click to look around · W A S D walk · Shift run · double-tap W sprint · Space jump · G greet · E learn about a place · M map & travel · V third person · Esc pause / resume', 'Bakmak için tıklayın · W A S D yürü · Shift koş · W’ye iki kez bas: depar · Boşluk zıpla · G selam ver · E bilgi · M harita ve yolculuk · V üçüncü şahıs · Esc duraklat / devam et')}</p>
           <p className="sm:hidden">{tr(lang, 'Use the joystick to walk and drag to look around', 'Yürümek için joystick’i kullanın, bakmak için sürükleyin')}</p>
         </div>
       )}
 
-      <Joystick />
+      {!paused && !selected && <button data-walkui className="glass btn-ghost pointer-events-auto absolute bottom-20 left-4 min-h-11" onClick={() => window.dispatchEvent(new Event('walk:greet'))}>
+        {tr(lang, 'Greet / wave · G', 'Selam ver · G')}
+      </button>}
+      {!paused && <Joystick />}
       {/* phone: jump + view */}
       <div data-walkui className="pointer-events-auto absolute bottom-[max(1.5rem,env(safe-area-inset-bottom))] right-5 flex flex-col items-center gap-3 [@media(pointer:fine)]:hidden">
         <button className="glass grid h-11 w-11 place-items-center rounded-full text-sm" onClick={() => { walk.view = walk.view === 'first' ? 'third' : 'first' }} aria-label="view">👁</button>

@@ -9,10 +9,17 @@ export interface TerrainMeta {
 export interface Terrain {
   meta: TerrainMeta
   heights: Float32Array
-  /** terrain height (local Y) at local x,z (bilinear) */
+  /** Exact height on the rendered terrain triangles at local x,z. */
   heightAt: (x: number, z: number) => number
   toLocal: (lat: number, lon: number) => [number, number]
   toLatLon: (x: number, z: number) => [number, number]
+}
+
+/** PlaneGeometry splits a grid cell along the h10–h01 diagonal. */
+export function terrainCellHeight(h00: number, h10: number, h01: number, h11: number, u: number, v: number) {
+  return u + v <= 1
+    ? h00 + (h10 - h00) * u + (h01 - h00) * v
+    : h11 + (h01 - h11) * (1 - u) + (h10 - h11) * (1 - v)
 }
 
 let promise: Promise<Terrain> | null = null
@@ -37,7 +44,7 @@ export function loadTerrain(): Promise<Terrain> {
       const fu = Math.min(Math.max(u - i, 0), 1), fv = Math.min(Math.max(v - j, 0), 1)
       const h00 = heights[j * g + i], h10 = heights[j * g + i + 1]
       const h01 = heights[(j + 1) * g + i], h11 = heights[(j + 1) * g + i + 1]
-      const h = h00 * (1 - fu) * (1 - fv) + h10 * fu * (1 - fv) + h01 * (1 - fu) * fv + h11 * fu * fv
+      const h = terrainCellHeight(h00, h10, h01, h11, fu, fv)
       return h - meta.minH
     }
     const toLocal = (lat: number, lon: number): [number, number] => [

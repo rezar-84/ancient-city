@@ -47,7 +47,7 @@ function Keys() {
     const on = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement) return
       const s = useApp.getState()
-      if (e.key === 'Escape') { if (s.arOpen) s.setAR(false); else s.select(null) }
+      if (e.key === 'Escape' && s.mode !== 'walk') { if (s.arOpen) s.setAR(false); else s.select(null) }
       if (e.key === 'p' && e.shiftKey) s.togglePerf()
       if (e.key === 'l') s.setLang(s.lang === 'en' ? 'tr' : 'en')
     }

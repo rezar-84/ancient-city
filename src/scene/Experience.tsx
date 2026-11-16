@@ -15,7 +15,7 @@ import { HAZE, PloutonionMist, SkyDome, patchFogChunks } from './Effects'
 import { sceneUniforms } from './Terrain'
 import { PlanInk } from './PlanInk'
 import { Navigation } from './Navigation'
-import { WalkControls } from '../walk/WalkControls'
+import { WalkControls, walk } from '../walk/WalkControls'
 import { Crowd } from '../walk/Crowd'
 import { capturePipeline, installCapture } from './captureRenders'
 import { useApp } from '../store'
@@ -74,8 +74,10 @@ function Lights() {
     // no haze on the parchment plan
     if (fog.current) { const p = sceneUniforms.uPlan.value; fog.current.near = 500 + p * 1e6; fog.current.far = 9000 + p * 2e6 }
     if (!l || !ctl || !cam) return
-    tgt.current.copy(ctl.target)
-    const d = cam.position.distanceTo(ctl.target)
+    const walking = useApp.getState().mode === 'walk'
+    if (walking) tgt.current.set(walk.x, walk.feet, walk.z)
+    else tgt.current.copy(ctl.target)
+    const d = walking ? 100 : cam.position.distanceTo(ctl.target)
     const ext = THREE.MathUtils.clamp(d * 0.62, 70, 1100)
     const sc = l.shadow.camera
     if (Math.abs(sc.right - ext) > ext * 0.08) {
@@ -228,7 +230,7 @@ export function Experience() {
         bounds={() => isLight ? [26, 35] : [45, 58]}
         onDecline={() => { if (capturePipeline.busy) return; if (fx && fxParam !== '1') setFx(false); else setDpr((d) => Math.max(0.65, d - 0.15)) }}
         onIncline={() => { if (!capturePipeline.busy) setDpr((d) => Math.min(maxDpr, d + 0.1)) }}
-        onFallback={() => { if (capturePipeline.busy) return; setFx(false); setDpr(0.65) }}
+        onFallback={() => { if (capturePipeline.busy) return; if (fxParam !== '1') setFx(false); setDpr(0.65) }}
       />
       <MotionQuality onMotion={setMoving} />
       <Lights />
