@@ -244,3 +244,58 @@ function boxBlur(src: Float32Array, N: number, R: number) {
   }
   return out
 }
+
+// Runtime-only recipes: deliberately separate from RECIPES and makeStone so AR exports stay identical.
+export const RUNTIME_RECIPES = {
+  plaster: { seed: 71, tile: 4, color: [0.89, 0.85, 0.76], rough: 0.93, depth: 0.004 },
+  rooftile: { seed: 83, tile: 4, color: [0.68, 0.34, 0.20], rough: 0.80, depth: 0.065 },
+  dirt: { seed: 97, tile: 4, color: [0.56, 0.46, 0.34], rough: 0.96, depth: 0.035 },
+  grass: { seed: 109, tile: 4, color: [0.61, 0.56, 0.35], rough: 0.98, depth: 0.018 },
+} as const
+
+/** Raw RGBA runtime maps. RG = OpenGL tangent normal XY; B = roughness, A = 255. */
+export function makeRuntimeSurface(name: keyof typeof RUNTIME_RECIPES, N = 512) {
+  const r = RUNTIME_RECIPES[name], H = new Float32Array(N * N)
+  const base = Buffer.alloc(N * N * 4), nr = Buffer.alloc(N * N * 4)
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const u = (i + 0.5) / N, v = (j + 0.5) / N, p = j * N + i
+    const low = fbm(u, v, 4, 4, r.seed), fine = fbm(u, v, 64, 3, r.seed + 1)
+    let h = fine * 0.2, tint = 0.9 + low * 0.2 + (fine - 0.5) * 0.12
+    if (name === 'plaster') {
+      // Broad lime wash and faint overlapping horizontal trowel swipes; no masonry joints.
+      const swipe = anoise(u, v, 5, 64, r.seed + 2)
+      h += swipe * 0.3; tint += (swipe - 0.5) * 0.045
+    } else if (name === 'rooftile') {
+      // 10 tegula channels across, 8 overlapping rows; rounded imbrex covers on each seam.
+      const x = (u * 10) % 1, y = (v * 8) % 1
+      const cover = Math.sqrt(Math.max(0, 1 - (Math.min(x, 1 - x) / 0.16) ** 2))
+      const overlap = 1 - smooth(0.02, 0.10, y)
+      h += cover * 0.65 + overlap * 0.18
+      tint *= 0.86 + 0.28 * hash(Math.floor(u * 10), Math.floor(v * 8), r.seed)
+      tint *= 0.80 + 0.20 * smooth(0, 0.035, y)
+    } else {
+      // Periodic cellular gravel, with elongated dry straw laid over the grass variant.
+      const gravel = smooth(0.48, 0.74, vnoise(u, v, 100, r.seed + 4))
+      h += gravel * 0.7; tint += gravel * 0.15
+      if (name === 'grass') {
+        const straw = smooth(0.52, 0.72, anoise(u, v, 180, 24, r.seed + 5))
+        const cross = smooth(0.57, 0.78, anoise(u, v, 20, 160, r.seed + 6))
+        h += straw * 0.3 + cross * 0.2; tint += straw * 0.22 + cross * 0.1
+      }
+    }
+    H[p] = h
+    for (let c = 0; c < 3; c++) base[p * 4 + c] = srgbByte(r.color[c] * tint)
+    base[p * 4 + 3] = nr[p * 4 + 3] = 255
+    nr[p * 4 + 2] = srgbByte(r.rough + (fine - 0.5) * 0.08)
+  }
+  const k = r.depth * N / r.tile * 0.5
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const p = j * N + i
+    const x = -(H[j * N + (i + 1) % N] - H[j * N + (i + N - 1) % N]) * k
+    const y = (H[((j + 1) % N) * N + i] - H[((j + N - 1) % N) * N + i]) * k
+    const len = Math.hypot(x, y, 1)
+    nr[p * 4] = srgbByte(x / len * 0.5 + 0.5)
+    nr[p * 4 + 1] = srgbByte(y / len * 0.5 + 0.5)
+  }
+  return { base, nr, size: N }
+}
