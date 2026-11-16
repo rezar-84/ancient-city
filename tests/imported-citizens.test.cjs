@@ -69,3 +69,49 @@ test('curated clips preserve bind pose metadata and package stays within the ini
   for (const file of ['male', 'female', 'motions']) bytes += fs.statSync(`public/models/citizens/${file}.glb`).size
   assert.ok(bytes < 8 * 1024 * 1024)
 })
+
+test('foot IK raises each ankle toward terrain and releases it while airborne', async () => {
+  const { instantiateCitizen, male, motions } = await setup
+  const plain = instantiateCitizen(male, motions, 'roman', palette())
+  const ik = instantiateCitizen(male, motions, 'roman', palette())
+  const motion = { speed: 0, grounded: true, wave: false, look: 0 }
+  for (let i = 0; i < 30; i++) {
+    plain.update(1 / 60, motion)
+    ik.update(1 / 60, { ...motion, groundAt: () => 0.12 })
+  }
+  for (const side of ['l', 'r']) {
+    const a = plain.root.getObjectByName(`foot_${side}`).getWorldPosition(new THREE.Vector3())
+    const b = ik.root.getObjectByName(`foot_${side}`).getWorldPosition(new THREE.Vector3())
+    assert.ok(b.y > a.y + 0.05, 'ankle should rise on a raised surface')
+    assert.ok(Math.abs(b.x - a.x) < 0.03 && Math.abs(b.z - a.z) < 0.03)
+  }
+  plain.update(1 / 60, { ...motion, grounded: false })
+  ik.update(1 / 60, { ...motion, grounded: false, groundAt: () => 0.12 })
+  for (const side of ['l', 'r']) assert.ok(plain.root.getObjectByName(`foot_${side}`).getWorldPosition(new THREE.Vector3()).distanceTo(ik.root.getObjectByName(`foot_${side}`).getWorldPosition(new THREE.Vector3())) < 1e-5)
+  plain.dispose(); ik.dispose()
+})
+
+test('cloth stays finite with welded seams, pinned waist and reset after teleport', async () => {
+  const { instantiateCitizen, female, motions } = await setup
+  const citizen = instantiateCitizen(female, motions, 'byzantine', palette())
+  const cloth = citizen.root.getObjectByName('SimulatedTunic')
+  const pos = cloth.geometry.getAttribute('position')
+  for (let frame = 0; frame < 120; frame++) {
+    citizen.root.position.z += 0.02
+    citizen.root.rotation.y = Math.sin(frame / 30) * 0.5
+    citizen.update(frame === 60 ? 2 : 1 / 60, { speed: 1.2, grounded: true, wave: false, look: 0, groundAt: () => 0 })
+    assert.ok(Array.from(pos.array).every(Number.isFinite))
+    for (let row = 0; row < 6; row++) assert.ok(new THREE.Vector3().fromBufferAttribute(pos, row * 25).distanceTo(new THREE.Vector3().fromBufferAttribute(pos, row * 25 + 24)) < 1e-6)
+  }
+  const source = citizen.root.getObjectByName('SimulatedTunic').parent.children.find(o => o.isSkinnedMesh && !o.visible)
+  for (let i = 0; i < 24; i++) {
+    const pinned = new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(cloth.matrixWorld)
+    const animated = source.getVertexPosition(i, new THREE.Vector3()).applyMatrix4(source.matrixWorld)
+    assert.ok(pinned.distanceTo(animated) < 1e-5)
+  }
+  citizen.reset(); citizen.root.position.set(100, 0, 100)
+  citizen.update(1 / 60, { speed: 0, grounded: true, wave: false, look: 0 })
+  const bounds = new THREE.Box3().setFromBufferAttribute(pos)
+  assert.ok(bounds.getSize(new THREE.Vector3()).length() < 3, 'teleport must not stretch cloth')
+  citizen.dispose()
+})

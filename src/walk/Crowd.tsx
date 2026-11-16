@@ -202,6 +202,11 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
     sim.avatar?.dispose(); sim.closePeople.forEach(slot => slot.citizen.dispose())
   }, [sim])
 
+  const footGround = (x: number, z: number) => {
+    const y = terrain.heightAt(x, z)
+    return Math.max(y, probe.ground(x, z, y + 2.5))
+  }
+
   const m4 = useMemo(() => new THREE.Matrix4(), [])
   const q = useMemo(() => new THREE.Quaternion(), [])
   const pos = useMemo(() => new THREE.Vector3(), [])
@@ -280,7 +285,7 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
       if (close) {
         close.citizen.root.visible = true
         close.citizen.root.position.copy(pos); close.citizen.root.quaternion.copy(q); close.citizen.root.scale.copy(one)
-        close.citizen.update(dt, { speed: gait ? n.speed : 0, grounded: true, wave: replying, look: n.look })
+        close.citizen.update(dt, { speed: gait ? n.speed : 0, grounded: true, wave: replying, look: n.look, groundAt: footGround })
         m4.compose(hidden, q, one)
       } else m4.compose(pos, q, one)
       people.setMatrixAt(i, m4)
@@ -292,7 +297,7 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
     if (sim.avatar?.root.visible) {
       pos.set(walk.x, walk.feet, walk.z); q.setFromAxisAngle(up, walk.yaw + Math.PI)
       sim.avatar.root.position.copy(pos); sim.avatar.root.quaternion.copy(q)
-      sim.avatar.update(dt, { speed: walk.speed, grounded: walk.grounded, wave: performance.now() < walk.waveUntil, look: 0 })
+      sim.avatar.update(dt, { speed: walk.speed, grounded: walk.grounded, wave: performance.now() < walk.waveUntil, look: 0, groundAt: footGround })
       m4.compose(hidden, q, one)
       pAttr.anim.setXYZW(av, 0, walk.speed < 0.3 ? 0 : walk.speed > 4 ? 1 : 0.5, performance.now() < walk.waveUntil ? 1 : 0, 0)
     } else if (walking && walk.view === 'third') {

@@ -28,7 +28,16 @@ fails, the original crowd remains available. Textures and source geometry are
 shared; each visible rig has an independent skeleton and animation mixer.
 
 Movement stays controlled by the existing world collision/grounding code.
-Animation clips are retargeted and cross-faded; this is not foot IK or cloth
-simulation. CPU regression checks cover skinned bounds, weights, independent
+Animation clips are retargeted and cross-faded. Post-animation two-bone foot
+IK samples terrain/street support, adjusts ankle height within reach limits,
+preserves swing clearance, and releases during jumps. It does not lock footsteps
+in world space or rotate soles to the slope.
+
+The tunic hem uses 144 welded cloth particles with a pinned waist, damped inertia,
+gravity, mild wind, distance constraints, animation tethers and leg capsules.
+It steps at 60 Hz with at most three steps per update and resets after teleport
+or pool reuse. This is a lightweight hem simulation, without cloth self-collision
+or collisions against arbitrary buildings. Only the existing nearby rig pool
+and visible third-person player run these solvers. Pausing freezes their updates. CPU regression checks cover skinned bounds, weights, independent
 poses, transitions, and the asset-size budget. Real GPU rendering and frame
 rate still require a browser check on target devices.
