@@ -158,6 +158,18 @@ export async function playVoice(id: string) {
 // ---- interface sounds ----------------------------------------------------------------------
 export type UiSound = 'ui-click' | 'whoosh' | 'drum' | 'shimmer' | 'open' | 'hover'
 
+/** a one-shot on any layer (footsteps, landings, barks) with optional stereo pan */
+export function playOneShot(id: string, layer: Layer, gain = 1, pan = 0, rate = 1) {
+  if (!ctx || ctx.state !== 'running' || settings[layer] <= 0) return
+  void load(`/audio/sfx/${id}.mp3`).then((buf) => {
+    if (!buf || !ctx) return
+    const src = ctx.createBufferSource(); src.buffer = buf; src.playbackRate.value = rate
+    const g = ctx.createGain(); g.gain.value = gain
+    const p = ctx.createStereoPanner(); p.pan.value = pan
+    src.connect(g).connect(p).connect(bus[layer]); src.start()
+  })
+}
+
 /** an occasional one-shot on the ambience layer (wind gust, distant birds) */
 export function playAmbientOneShot(id: 'gust' | 'birds', gain = 1) {
   if (!ctx || ctx.state !== 'running' || settings.ambience <= 0) return

@@ -73,7 +73,7 @@ export function WalkHUD() {
     const key = (ev: KeyboardEvent) => {
       const k = ev.key.toLowerCase()
       if (k === 'e' && nearRef.current) interact(nearRef.current)
-      if (k === 'escape' && !document.pointerLockElement && !useApp.getState().selected) exitWalk()
+      if (k === 'escape' && !document.pointerLockElement && !useApp.getState().selected && !document.querySelector('[data-fastmap]')) exitWalk()
     }
     window.addEventListener('keydown', key)
     return () => { cancelAnimationFrame(raf); window.removeEventListener('keydown', key) }
@@ -114,13 +114,17 @@ export function WalkHUD() {
       </div>
 
       {/* exit */}
-      <button className="glass btn-ghost pointer-events-auto absolute right-2.5 top-[max(0.625rem,env(safe-area-inset-top))] sm:right-4 sm:top-4" onClick={exitWalk}>✕ {tr(lang, 'Leave', 'Çık')}</button>
+      <div data-walkui className="pointer-events-auto absolute right-2.5 top-[max(0.625rem,env(safe-area-inset-top))] flex items-center gap-2 sm:right-4 sm:top-4">
+        <button className="glass btn-ghost" onClick={() => window.dispatchEvent(new Event('walk:map'))} title="M">🗺 <span className="hidden sm:inline">{tr(lang, 'Map', 'Harita')}</span></button>
+        <SettingsButton lang={lang} />
+        <button className="glass btn-ghost" onClick={exitWalk}>✕ <span className="hidden sm:inline">{tr(lang, 'Leave', 'Çık')}</span></button>
+      </div>
 
       {/* crosshair */}
       {locked && <div className="absolute left-1/2 top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/80 shadow" />}
 
       {/* minimap */}
-      <div className={'glass absolute bottom-4 right-4 hidden overflow-hidden rounded-2xl p-1 ' + (selected ? '' : 'sm:block')}>
+      <div data-walkui onClick={() => window.dispatchEvent(new Event('walk:map'))} className={'glass pointer-events-auto absolute bottom-4 right-4 hidden cursor-pointer overflow-hidden rounded-2xl p-1 ' + (selected ? '' : 'sm:block')} title="M">
         <div className="relative overflow-hidden rounded-xl" style={{ width: MAP_W, height: MAP_H }}>
           <PlanSVG lang={lang} width={MAP_W * 2} withLabels={false} grid />
           <div ref={dot} className="absolute h-0 w-0" style={{ borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderBottom: '14px solid #c9553a', filter: 'drop-shadow(0 0 2px #fff)' }} />
@@ -139,12 +143,17 @@ export function WalkHUD() {
       {/* first-time help */}
       {!moved && !selected && (
         <div className="glass absolute left-1/2 top-1/2 max-w-sm -translate-x-1/2 translate-y-10 rounded-2xl px-5 py-3 text-center text-sm">
-          <p className="hidden sm:block">{tr(lang, 'Click to look around · W A S D to walk · Shift to run · E to learn about a place · Esc to free the mouse', 'Etrafa bakmak için tıklayın · Yürümek için W A S D · Koşmak için Shift · Bir yer hakkında bilgi için E · Fareyi serbest bırakmak için Esc')}</p>
+          <p className="hidden sm:block">{tr(lang, 'Click to look around · W A S D walk · Shift run · double-tap W sprint · Space jump · E learn about a place · M map & travel · V third person · Esc free the mouse', 'Bakmak için tıklayın · W A S D yürü · Shift koş · W’ye iki kez bas: depar · Boşluk zıpla · E bilgi · M harita ve yolculuk · V üçüncü şahıs · Esc fareyi bırak')}</p>
           <p className="sm:hidden">{tr(lang, 'Use the joystick to walk and drag to look around', 'Yürümek için joystick’i kullanın, bakmak için sürükleyin')}</p>
         </div>
       )}
 
       <Joystick />
+      {/* phone: jump + view */}
+      <div data-walkui className="pointer-events-auto absolute bottom-[max(1.5rem,env(safe-area-inset-bottom))] right-5 flex flex-col items-center gap-3 [@media(pointer:fine)]:hidden">
+        <button className="glass grid h-11 w-11 place-items-center rounded-full text-sm" onClick={() => { walk.view = walk.view === 'first' ? 'third' : 'first' }} aria-label="view">👁</button>
+        <button className="glass grid h-16 w-16 place-items-center rounded-full font-display text-sm" onPointerDown={() => { walk.jumpPressed = true }} aria-label="jump">⤒</button>
+      </div>
     </div>
   )
 }
@@ -173,6 +182,35 @@ function Joystick() {
       onPointerUp={end} onPointerCancel={end}
     >
       <div className="absolute left-1/2 top-1/2 h-14 w-14 -translate-x-1/2 -translate-y-1/2 rounded-full bg-travertine/80 shadow-lg" style={{ transform: `translate(calc(-50% + ${knob.x}px), calc(-50% + ${knob.y}px))` }} />
+    </div>
+  )
+}
+
+function SettingsButton({ lang }: { lang: 'en' | 'tr' }) {
+  const [open, setOpen] = useState(false)
+  const [, force] = useState(0)
+  return (
+    <div className="relative">
+      <button className="glass btn-ghost" onClick={() => { if (document.pointerLockElement) void document.exitPointerLock(); setOpen((o) => !o) }} aria-expanded={open} aria-label="settings">⚙</button>
+      {open && (
+        <div className="glass absolute right-0 top-12 w-64 rounded-2xl p-4 text-sm">
+          <label className="block">
+            <span className="mb-1 flex justify-between text-xs text-travertine/75"><span>{tr(lang, 'Walking speed', 'Yürüme hızı')}</span><span className="tabular-nums">{walk.speedMul.toFixed(2)}×</span></span>
+            <input type="range" min={0.75} max={1.75} step={0.05} value={walk.speedMul} className="w-full accent-amber-500"
+              onChange={(ev) => { walk.speedMul = Number(ev.target.value); force((n) => n + 1) }} />
+          </label>
+          <div className="mt-3 flex items-center justify-between text-xs">
+            <span className="text-travertine/75">{tr(lang, 'Camera', 'Kamera')}</span>
+            <div className="flex rounded-full bg-white/10 p-0.5">
+              {(['first', 'third'] as const).map((v) => (
+                <button key={v} className={'rounded-full px-3 py-1 ' + (walk.view === v ? 'bg-travertine text-ink' : '')} onClick={() => { walk.view = v; force((n) => n + 1) }}>
+                  {v === 'first' ? tr(lang, '1st person', '1. şahıs') : tr(lang, '3rd person', '3. şahıs')}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

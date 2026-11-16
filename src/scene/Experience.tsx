@@ -8,6 +8,7 @@ import { GradeAnimator, Terrain } from './Terrain'
 import { flyTo, orbitPose, rig } from './camera'
 import { City } from './City'
 import { CityGrid } from './CityGrid'
+import { CityDetails } from './CityDetails'
 import { Pins } from './Pins'
 import { TodayTiles } from './TodayTiles'
 import { HAZE, PloutonionMist, SkyDome, patchFogChunks } from './Effects'
@@ -43,6 +44,7 @@ function World() {
       <Terrain data={data} />
       <City terrain={data} />
       <CityGrid terrain={data} />
+      <CityDetails terrain={data} />
       <Crowd terrain={data} />
       {!walking && <Pins terrain={data} />}
       <PloutonionMist terrain={data} />

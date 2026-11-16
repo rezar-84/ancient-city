@@ -36,6 +36,16 @@ export const BEDS: Bed[] = [
   { id: 'hover', seconds: 0.5, loop: false, prompt: 'very soft short wooden tick, tiny subtle interface hover sound' },
 ]
 
+// footsteps (4 variants per surface) and landing — sandals / leather shoes of the period
+const STEP_PROMPT = {
+  stone: 'a single footstep of a leather sandal on smooth limestone paving, close, dry, short',
+  gravel: 'a single footstep of a leather sandal on gravel and packed dirt, close, short crunch',
+  grass: 'a single soft footstep on dry grass and earth, close, short rustle',
+}
+for (const surf of ['stone', 'gravel', 'grass'] as const)
+  for (let i = 1; i <= 4; i++) BEDS.push({ id: `step-${surf}-${i}`, seconds: 0.5, loop: false, prompt: STEP_PROMPT[surf] + (i > 1 ? `, variation ${i}` : '') })
+BEDS.push({ id: 'land', seconds: 0.6, loop: false, prompt: 'a person landing on both feet after a small jump onto stone, soft thud with sandal slap, close, short' })
+
 export const VOICES: VoiceLine[] = [
   {
     id: 'apollo-grc', lang: 'grc', voice: 'priest', source: 'Homeric Hymn 21, To Apollo',

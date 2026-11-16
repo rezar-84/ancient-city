@@ -83,6 +83,8 @@ interface Built {
  */
 /** Footprints of generated house wings (grid-aligned: hu along the plateia axis, hv across), for walk-mode collisions. */
 export const HOUSE_RECTS: Array<{ x: number; z: number; hu: number; hv: number }> = []
+/** Paved street segments (for footstep surfaces) */
+export const STREET_SEGS: Array<{ a: [number, number]; b: [number, number]; w: number }> = []
 export const GRID_AXES = { u: [0, 1] as [number, number], v: [1, 0] as [number, number] }
 
 function buildCity(t: Terrain): Built {
@@ -147,6 +149,7 @@ function buildCity(t: Terrain): Built {
   let insulae = 0, houses = 0
   const nU = Math.floor(L / GRID.pitchU)
   const streetSegs = new Map<string, { a: V2; b: V2; w: number }>()
+  STREET_SEGS.length = 0
   const addStreet = (key: string, a: V2, b: V2, w: number) => {
     const mx = (a[0] + b[0]) / 2, mz = (a[1] + b[1]) / 2
     if (!streetSegs.has(key) && inPoly(mx, mz, region) && !excluded.slice(0, PLAN.zones.length).some((p) => inPoly(mx, mz, p)) && slopeOk([a, b], 14))
@@ -236,6 +239,7 @@ function buildCity(t: Terrain): Built {
   const pos: number[] = [], col: number[] = [], idx: number[] = []
   let streetLen = 0
   const KERB = 0.2, KW = 0.55
+  STREET_SEGS.push(...streetSegs.values())
   for (const { a, b, w } of streetSegs.values()) {
     const len = Math.hypot(b[0] - a[0], b[1] - a[1]); streetLen += len
     const n = Math.max(1, Math.ceil(len / 5))
@@ -286,7 +290,7 @@ function buildCity(t: Terrain): Built {
   let ruins: THREE.Mesh | null = null
   if (ruinGeos.length) {
     const merged = mergeAll(ruinGeos)
-    ruins = new THREE.Mesh(merged, mats.limestone); ruins.castShadow = ruins.receiveShadow = true
+    ruins = new THREE.Mesh(merged, mats.limestone); ruins.name = "ruins-solid"; ruins.castShadow = ruins.receiveShadow = true
   }
 
   const inst = (geo: THREE.BufferGeometry, mat: THREE.Material, ms: THREE.Matrix4[]) => {

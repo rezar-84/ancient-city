@@ -4,6 +4,7 @@ import { focusLandmark } from './scene/Pins'
 import { PlaceAudio } from './audio/PlaceAudio'
 import { CharacterSelect } from './walk/CharacterSelect'
 import { WalkHUD } from './walk/WalkHUD'
+import { FastTravel } from './walk/FastTravel'
 import { NavControls } from './ui/NavControls'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { Experience } from './scene/Experience'
@@ -93,6 +94,7 @@ export default function App() {
       <NavControls />
       <PlaceAudio />
       <WalkHUD />
+      <FastTravel />
       <CharacterSelect />
       <Hint />
       <Loader />

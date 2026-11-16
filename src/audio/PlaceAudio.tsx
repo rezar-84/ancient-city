@@ -4,7 +4,8 @@ import { LANDMARKS } from '../content/landmarks'
 import { LANG_LABEL, PLACE_SOUND, langForYear, type VoiceLine } from '../content/soundscapes'
 import { getTerrain } from '../scene/terrainData'
 import { rig, flightListeners } from '../scene/camera'
-import { ensureAudio, onVoice, playAmbientOneShot, playUi, playVoice, setBedLevels, setMusic, stopVoice } from './engine'
+import { walk } from '../walk/WalkControls'
+import { ensureAudio, onVoice, playAmbientOneShot, playOneShot, playUi, playVoice, setBedLevels, setMusic, stopVoice } from './engine'
 import { GRID } from '../content/grid'
 
 const smooth = (a: number, b: number, x: number) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t) }
@@ -102,6 +103,18 @@ export function PlaceAudio() {
     }
     next()
     return () => window.clearTimeout(t)
+  }, [])
+
+  // walk mode: footsteps by surface, landing thud
+  useEffect(() => {
+    let alt = 0
+    const step = (surf: 'stone' | 'gravel' | 'grass', k: number) => {
+      alt = 1 - alt
+      playOneShot(`step-${surf}-${1 + Math.floor(Math.random() * 4)}`, 'places', 0.55 * k, alt ? 0.12 : -0.12, 0.92 + Math.random() * 0.16)
+    }
+    const land = (v: number) => playOneShot('land', 'places', Math.min(1, 0.4 + v / 10))
+    walk.onStep.add(step); walk.onLand.add(land)
+    return () => { walk.onStep.delete(step); walk.onLand.delete(land) }
   }, [])
 
   // event sounds

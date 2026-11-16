@@ -7,6 +7,7 @@ import { LANDMARKS } from '../content/landmarks'
 import { PLAN } from '../content/plan'
 import { timeGated, useApp } from '../store'
 import { getMaterials } from './materials'
+import { theatreScaenaeDetail } from './generators/house'
 import { groundUniforms, sceneUniforms, setGroundData } from './Terrain'
 import { MONUMENT_FOOTPRINTS, registerFootprint } from './footprints'
 
@@ -221,6 +222,13 @@ export function City({ terrain }: { terrain: Terrain }) {
     for (const l of LANDMARKS) {
       if (!l.builder || !BUILDERS[l.builder]) continue
       const g = BUILDERS[l.builder](l.builderOpts ?? {})
+      if (l.builder === 'theatre') {
+        // richer stage front (Codex): aediculae, pediments, doors and statues, overlaid on the scaena
+        const det = theatreScaenaeDetail(70, 20)
+        det.rotation.y = Math.PI
+        det.position.set(0, 1.5, Math.max(13, 50 * 0.3) - 12 / 2 - 0.71)
+        g.add(det)
+      }
       const [x, z] = terrain.toLocal(l.lat, l.lon)
       const box = new THREE.Box3().setFromObject(g)
       const r = Math.max(box.max.x - box.min.x, box.max.z - box.min.z) * 0.35
@@ -293,7 +301,7 @@ export function City({ terrain }: { terrain: Terrain }) {
   })
 
   return (
-    <group ref={root}>
+    <group ref={root} name="city-root">
       {pieces.map((p, i) => <primitive key={i} object={p.obj} />)}
     </group>
   )
