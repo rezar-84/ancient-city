@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { Terrain } from '../scene/terrainData'
@@ -11,6 +11,7 @@ import { createCartGeometry, createCrowdAttributes, createHorseGeometry, createP
 import { gridFrame, stallSpots } from './spots'
 import { walk } from './WalkControls'
 import { WorldProbe } from './physics'
+import { createRiggedCitizen, loadCitizenAssets } from './riggedCitizen'
 
 type Variant = 'greek' | 'roman' | 'byzantine'
 const variantFor = (year: number): Variant => (year < -133 ? 'greek' : year < 330 ? 'roman' : 'byzantine')
@@ -35,6 +36,14 @@ export const NPC_STATE: { x: Float32Array; z: Float32Array; count: number; femal
 
 export function Crowd({ terrain }: { terrain: Terrain }) {
   const mode = useApp((s) => s.mode)
+  const [citizenAssets, setCitizenAssets] = useState(false)
+  useEffect(() => {
+    if (mode !== 'walk' || citizenAssets) return
+    let cancelled = false
+    void loadCitizenAssets().then(() => { if (!cancelled) setCitizenAssets(true) })
+      .catch(error => console.warn('Detailed citizens unavailable; keeping the instanced crowd.', error))
+    return () => { cancelled = true }
+  }, [mode, citizenAssets])
   const scene = useThree(s => s.scene)
   const probe = useMemo(() => new WorldProbe(), [])
   const groundCache = useRef(new Map<number, { x: number; z: number; y: number }>())
@@ -147,6 +156,16 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
     c.set(SKIN_TONES[2]); pAttr.tint1.setXYZ(npcs.length, c.r, c.g, c.b)
     c.set(ch.colors.accent); pAttr.tint2.setXYZ(npcs.length, c.r, c.g, c.b)
 
+    const avatar = citizenAssets ? createRiggedCitizen(variant, { cloth: new THREE.Color(ch.colors.body), skin: new THREE.Color(SKIN_TONES[2]), accent: new THREE.Color(ch.colors.accent) }, ch.gender) : null
+    if (avatar) avatar.root.visible = false
+    const poolSize = window.matchMedia('(pointer: coarse)').matches ? 2 : 6
+    const closePeople = Array.from({ length: citizenAssets ? poolSize : 0 }, (_, slotIndex) => {
+      const gender = slotIndex % 2 ? 'f' as const : 'm' as const
+      const citizen = createRiggedCitizen(variant, { cloth: new THREE.Color(pal.cloth[0]), skin: new THREE.Color(SKIN_TONES[2]), accent: new THREE.Color(pal.accent[0]) }, gender)
+      citizen.root.visible = false
+      return { citizen, id: -1, gender }
+    })
+
     const nCarts = variant === 'roman' ? 16 : 9
     const carts = Array.from({ length: nCarts }, (_, i) => ({ u: 40 + rand() * (F.L - 80), v: i % 2 ? 2.4 : -2.4, dir: i % 2 ? 1 : -1, speed: 1.2 + rand() * 0.3, phase: rand() * 6.28 }))
     const hGeo = createHorseGeometry(), hAttr = createCrowdAttributes(nCarts)
@@ -173,13 +192,14 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
       return depth
     })
     NPC_STATE.x = new Float32Array(npcs.length); NPC_STATE.z = new Float32Array(npcs.length); NPC_STATE.count = npcs.length; NPC_STATE.female = female
-    return { F, npcs, carts, people, horses, cartMesh, pAttr, hAttr, cAttr, mats: [pMat, hMat, cMat, ...depthMats] }
+    return { F, npcs, carts, people, horses, cartMesh, pAttr, hAttr, cAttr, avatar, closePeople, mats: [pMat, hMat, cMat, ...depthMats] }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [terrain, variant, character, mode === 'walk' ? year : 0])
+  }, [terrain, variant, character, citizenAssets, mode === 'walk' ? year : 0])
 
   useEffect(() => () => {
     sim.people.geometry.dispose(); sim.horses.geometry.dispose(); sim.cartMesh.geometry.dispose()
     sim.mats.forEach((m) => m.dispose())
+    sim.avatar?.dispose(); sim.closePeople.forEach(slot => slot.citizen.dispose())
   }, [sim])
 
   const m4 = useMemo(() => new THREE.Matrix4(), [])
@@ -199,6 +219,20 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
     for (const m of mats) (m.userData.uTime as { value: number }).value = clock.current
     const walking = mode === 'walk'
     const px = walk.x, pz = walk.z
+    // Keep expensive skeletal animation limited to the player and a small nearby pool.
+    const candidates = walking ? npcs.map((_, i) => ({ i, d: Math.hypot(NPC_STATE.x[i] - px, NPC_STATE.z[i] - pz) }))
+      .filter(p => p.d < 22).sort((a, b) => a.d - b.d).slice(0, sim.closePeople.length).map(p => p.i) : []
+    for (const slot of sim.closePeople) {
+      if (!candidates.includes(slot.id)) { slot.id = -1; slot.citizen.root.visible = false }
+    }
+    for (const id of candidates) if (!sim.closePeople.some(slot => slot.id === id)) {
+      const slot = sim.closePeople.find(slot => slot.id === -1 && slot.gender === (NPC_STATE.female[id] ? 'f' : 'm'))
+      if (slot) {
+        slot.id = id
+        slot.citizen.reset()
+        slot.citizen.setPalette({ cloth: new THREE.Color().fromBufferAttribute(pAttr.tint0, id), skin: new THREE.Color().fromBufferAttribute(pAttr.tint1, id), accent: new THREE.Color().fromBufferAttribute(pAttr.tint2, id) })
+      }
+    }
     npcs.forEach((n, i) => {
       let x: number, z: number, yaw: number, gait = 0
       if (n.kind === 'walker' || n.kind === 'cross') {
@@ -242,15 +276,29 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
       const stature = 0.94 + ((i * 0.381966) % 1) * 0.13
       const build = 0.9 + ((i * 0.618034) % 1) * 0.22
       one.set(build, stature, build)
-      m4.compose(pos, q, one); people.setMatrixAt(i, m4)
+      const close = sim.closePeople.find(slot => slot.id === i)
+      if (close) {
+        close.citizen.root.visible = true
+        close.citizen.root.position.copy(pos); close.citizen.root.quaternion.copy(q); close.citizen.root.scale.copy(one)
+        close.citizen.update(dt, { speed: gait ? n.speed : 0, grounded: true, wave: replying, look: n.look })
+        m4.compose(hidden, q, one)
+      } else m4.compose(pos, q, one)
+      people.setMatrixAt(i, m4)
     })
     // the player's own figure (third person)
     one.set(1, 1, 1)
     const av = npcs.length
-    if (walking && walk.view === 'third') {
+    if (sim.avatar) sim.avatar.root.visible = walking && walk.view === 'third'
+    if (sim.avatar?.root.visible) {
+      pos.set(walk.x, walk.feet, walk.z); q.setFromAxisAngle(up, walk.yaw + Math.PI)
+      sim.avatar.root.position.copy(pos); sim.avatar.root.quaternion.copy(q)
+      sim.avatar.update(dt, { speed: walk.speed, grounded: walk.grounded, wave: performance.now() < walk.waveUntil, look: 0 })
+      m4.compose(hidden, q, one)
+      pAttr.anim.setXYZW(av, 0, walk.speed < 0.3 ? 0 : walk.speed > 4 ? 1 : 0.5, performance.now() < walk.waveUntil ? 1 : 0, 0)
+    } else if (walking && walk.view === 'third') {
       pos.set(walk.x, walk.feet, walk.z); q.setFromAxisAngle(up, walk.yaw + Math.PI)
       m4.compose(pos, q, one)
-      pAttr.anim.setXYZW(av, 0, walk.speed < 0.3 ? 0 : walk.speed > 4 ? 1 : 0.5, performance.now() < walk.waveUntil ? 1 : 0, 0)
+      pAttr.anim.setXYZW(av, 0, walk.speed < 0.3 ? 0 : 0.5, 0, 0)
     } else m4.compose(hidden, q.identity(), one)
     people.setMatrixAt(av, m4)
 
@@ -271,6 +319,8 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
   return (
     <group visible={visible}>
       <primitive object={sim.people} />
+      {sim.avatar && <primitive object={sim.avatar.root} />}
+      {sim.closePeople.map((slot, i) => <primitive key={i} object={slot.citizen.root} />)}
       <primitive object={sim.horses} />
       <primitive object={sim.cartMesh} />
     </group>

@@ -179,7 +179,7 @@ export function WalkHUD() {
       )}
 
       {!paused && !selected && <button data-walkui className="glass btn-ghost pointer-events-auto absolute bottom-20 left-4 min-h-11" onClick={() => window.dispatchEvent(new Event('walk:greet'))}>
-        {tr(lang, 'Greet / wave · G', 'Selam ver · G')}
+        {tr(lang, 'Greet · G', 'Selam ver · G')}
       </button>}
       {!paused && <Joystick />}
       {/* phone: jump + view */}

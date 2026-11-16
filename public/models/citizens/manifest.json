@@ -1,0 +1,14 @@
+{
+  "male.glb": {
+    "bytes": 2214788,
+    "sha256": "1cb7964a99f59a9e0f35d67e561e1eec4ef8b5b72602331e1483156bf16ddc53"
+  },
+  "female.glb": {
+    "bytes": 2575644,
+    "sha256": "2419a8dfeab53ca16dc5f0ae13cb516714681863db33af6b8f6e3ffd1d78123c"
+  },
+  "motions.glb": {
+    "bytes": 2466156,
+    "sha256": "5d70c15c9d312e32796bfd4a1d0e5dc4d3dee57321cd7017cf9905db07e52a3b"
+  }
+}
