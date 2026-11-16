@@ -6,13 +6,6 @@ THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree
 THREE.BufferGeometry.prototype.disposeBoundsTree = disposeBoundsTree
 THREE.Mesh.prototype.raycast = acceleratedRaycast
 
-declare module 'three' {
-  interface BufferGeometry {
-    boundsTree?: unknown
-    computeBoundsTree: typeof computeBoundsTree
-    disposeBoundsTree: typeof disposeBoundsTree
-  }
-}
 
 interface Entry { mesh: THREE.Mesh; sphere: THREE.Sphere }
 
