@@ -187,7 +187,10 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
     c.set(ch.colors.accent); pAttr.tint2.setXYZ(npcs.length, c.r, c.g, c.b)
 
     const avatar = citizenAssets ? createRiggedCitizen(variant, { cloth: new THREE.Color(ch.colors.body), skin: new THREE.Color(SKIN_TONES[2]), accent: new THREE.Color(ch.colors.accent) }, ch.gender) : null
-    if (avatar) avatar.root.visible = false
+    if (avatar) {
+      avatar.root.visible = false
+      avatar.setCut(['nikias', 'aurelia'].includes(ch.id) ? 'work' : 'full')
+    }
     const poolSize = window.matchMedia('(pointer: coarse)').matches ? 2 : 6
     const closePeople = Array.from({ length: citizenAssets ? poolSize : 0 }, (_, slotIndex) => {
       const gender = slotIndex % 2 ? 'f' as const : 'm' as const
@@ -265,6 +268,7 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
       if (slot) {
         slot.id = id
         slot.citizen.reset()
+        slot.citizen.setCut(npcs[id].kind === 'merchant' ? 'work' : 'full')
         slot.citizen.setPalette({ cloth: new THREE.Color().fromBufferAttribute(pAttr.tint0, id), skin: new THREE.Color().fromBufferAttribute(pAttr.tint1, id), accent: new THREE.Color().fromBufferAttribute(pAttr.tint2, id) })
       }
     }

@@ -73,6 +73,18 @@ function makeOutfit(body: THREE.SkinnedMesh, era: Era, palette: Palette) {
   }
   const p = top.getAttribute('position'), normals = top.getAttribute('normal')
   for (let i = 0; i < p.count; i++) p.setXYZ(i, p.getX(i) + normals.getX(i) * 0.018, p.getY(i) + normals.getY(i) * 0.018, p.getZ(i) + normals.getZ(i) * 0.018)
+  // Sample the actual waist of this body in bind space. Its front and back
+  // are asymmetric, so centre the belt on the sampled section.
+  let halfWidth = 0, back = Infinity, front = -Infinity
+  for (let i = 0; i < position.count; i++) {
+    if (Math.abs(position.getY(i) / height - 0.61) > 0.025) continue
+    halfWidth = Math.max(halfWidth, Math.abs(position.getX(i)))
+    back = Math.min(back, position.getZ(i))
+    front = Math.max(front, position.getZ(i))
+  }
+  const waistX = halfWidth + 0.025
+  const waistZ = (front - back) / 2 + 0.025
+  const centerZ = (front + back) / 2
   const hem = era === 'greek' ? 0.35 : era === 'roman' ? 0.31 : 0.18
   // The original narrow, flattened tube cut through the hips and exposed the
   // back of the body when a thigh moved. Give the waist an overlap with the
@@ -84,7 +96,12 @@ function makeOutfit(body: THREE.SkinnedMesh, era: Era, palette: Palette) {
   const left = body.skeleton.bones.findIndex(b => b.name === 'thigh_l'), right = body.skeleton.bones.findIndex(b => b.name === 'thigh_r')
   for (let i = 0; i < sp.count; i++) {
     const x = sp.getX(i), y = sp.getY(i), z = sp.getZ(i), fold = 1 + Math.cos(Math.atan2(z, x) * 12) * 0.025
-    sp.setXYZ(i, x * fold, y, z * fold * 0.96)
+    const waist = THREE.MathUtils.smoothstep(y / height, 0.51, 0.61)
+    const angle = Math.atan2(z, x)
+    sp.setXYZ(i,
+      THREE.MathUtils.lerp(x * fold, waistX * Math.cos(angle), waist),
+      y,
+      THREE.MathUtils.lerp(z * fold * 0.96, centerZ + waistZ * Math.sin(angle), waist))
     const leg = THREE.MathUtils.clamp((height * 0.61 - y) / height, 0, 0.24)
     // Blend across the centre so adjacent skirt vertices cannot split along a leg seam.
     const blend = THREE.MathUtils.smoothstep(x, -height * 0.12, height * 0.12)
@@ -95,7 +112,7 @@ function makeOutfit(body: THREE.SkinnedMesh, era: Era, palette: Palette) {
   source.dispose()
   const cloth = new THREE.MeshStandardMaterial({ color: palette.cloth, roughness: 0.88, side: THREE.DoubleSide })
   const trim = new THREE.MeshStandardMaterial({ color: palette.accent, roughness: 0.85, side: THREE.DoubleSide })
-  const belt = new THREE.CylinderGeometry(height * 0.151, height * 0.151, 0.045, 24, 1, true).scale(1, 1, 0.96).translate(0, height * 0.605, 0)
+  const belt = new THREE.CylinderGeometry(1, 1, 0.042, 24, 1, true).scale(waistX + 0.006, 1, waistZ + 0.006).translate(0, height * 0.61, centerZ)
   const bi = new Uint16Array(belt.getAttribute('position').count * 4), bw = new Float32Array(bi.length)
   for (let i = 0; i < bi.length; i += 4) { bi[i] = pelvis; bw[i] = 1 }
   belt.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(bi, 4)); belt.setAttribute('skinWeight', new THREE.Float32BufferAttribute(bw, 4))
@@ -281,6 +298,9 @@ export function instantiateCitizen(model: GLTF, motions: GLTF, era: Era, palette
   content.scale.setScalar(scale); const baseY = -bounds.min.y * scale; content.position.y = baseY
   const rawAnimations = motions.parser.json.animations as Array<{ name: string; extras?: { bindPose?: Record<string, BindPose> } }>
   const clips = motions.animations.map(c => retargetCitizenClip(c, content, motions.scene, rawAnimations.find(a => a.name === c.name)?.extras?.bindPose))
+  const skirtPositions = outfit[1].geometry.getAttribute('position')
+  const workCut = skirtPositions.clone()
+  let currentCut: 'work' | 'full' = 'work'
   const secondary = secondaryMotion(root, outfit[1])
   const mixer = new THREE.AnimationMixer(content)
   const actions = new Map(clips.map(c => [c.name, mixer.clipAction(c)]))
@@ -296,6 +316,18 @@ export function instantiateCitizen(model: GLTF, motions: GLTF, era: Era, palette
   choose('Idle_Loop')
   return {
     root, clips, gender: model.scene.name,
+    setCut(cut: 'work' | 'full') {
+      if (cut === currentCut) return
+      currentCut = cut
+      for (let i = 0; i < workCut.count; i++) {
+        const row = Math.floor(i / 25) / 5
+        const extra = cut === 'full' ? row * row : 0
+        skirtPositions.setXYZ(i, workCut.getX(i) * (1 + extra * 0.10),
+          workCut.getY(i) - extra * 0.12, workCut.getZ(i) * (1 + extra * 0.08))
+      }
+      skirtPositions.needsUpdate = true
+      secondary.reset()
+    },
     setPalette(next: Palette) {
       for (let i = 0; i < outfit.length; i++) (outfit[i].material as THREE.MeshStandardMaterial).color.copy(i === 2 ? next.accent : next.cloth)
     },
