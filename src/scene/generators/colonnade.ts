@@ -43,6 +43,10 @@ export function createColonnadedStreet(o: ColonnadedStreetOptions = {}): THREE.G
     b.box('marble', 1.1, 0.16, l, side * (w / 2 + 0.5), h + 0.72);
     for (let z = -l / 2 + pitch; z < l / 2; z += pitch * 4) {
       const x = side * (w / 2 + d - 0.7);
+      // A bench occupies 2.2 m along the shop wall. Keep its whole span
+      // clear where an entrance or monument interrupts the portico.
+      const wallX = side * (w / 2 + d);
+      if (open && [-1.1, 0, 1.1].some(offset => open(wallX, z + offset))) continue;
       b.box('travertine', 0.65, 0.16, 2.2, x, 0.9, z);
       for (const offset of [-0.7, 0.7]) b.box('limestone', 0.5, 0.5, 0.3, x, 0.57, z + offset);
     }

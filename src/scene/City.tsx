@@ -237,7 +237,16 @@ export function City({ terrain }: { terrain: Terrain }) {
       if (back) { x -= Math.sin(yaw) * back; z -= Math.cos(yaw) * back }
       const box = new THREE.Box3().setFromObject(g)
       const r = Math.max(box.max.x - box.min.x, box.max.z - box.min.z) * 0.35
-      g.position.set(x, l.builderOpts?.sink !== undefined ? terrain.heightAt(x, z) - Number(l.builderOpts.sink) : groundUnder(terrain, x, z, r), z)
+      let baseY = l.builderOpts?.sink !== undefined
+        ? terrain.heightAt(x, z) - Number(l.builderOpts.sink)
+        : groundUnder(terrain, x, z, r)
+      if (l.builder === 'latrine') {
+        // Place the walkable entrance at local +Z on the terrain at the
+        // threshold. The lowest corner of this long plot is downhill.
+        const threshold = Number(l.builderOpts?.width ?? 10) / 2
+        baseY = terrain.heightAt(x + Math.sin(yaw) * threshold, z + Math.cos(yaw) * threshold)
+      }
+      g.position.set(x, baseY, z)
       g.rotation.y = yaw
       registerFootprint(box, x, z, yaw, l.id, l.built, l.until)
       g.userData.landmark = l.id
