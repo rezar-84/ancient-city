@@ -5,20 +5,26 @@ import type { Terrain } from '../scene/terrainData'
 import { solidMonumentAt } from '../scene/footprints'
 import { gridFrame, stallSpots } from './spots'
 
-/** Small, shared-geometry market animals, fetched only after entering walk mode. */
+let sheepAssetPromise: Promise<THREE.Group> | null = null
+function loadSheepAsset() {
+  if (!sheepAssetPromise) {
+    sheepAssetPromise = import('three/examples/jsm/loaders/OBJLoader.js')
+      .then(({ OBJLoader }) => new OBJLoader().loadAsync('/models/animals/sheep.obj'))
+      .catch(error => { sheepAssetPromise = null; throw error })
+  }
+  return sheepAssetPromise
+}
+
+/** Small, shared-geometry market animals, fetched once on entering walk mode and reused across walk sessions. */
 export function MarketSheep({ terrain, year }: { terrain: Terrain; year: number }) {
   const [source, setSource] = useState<THREE.Group | null>(null)
   useEffect(() => {
     let cancelled = false
-    void import('three/examples/jsm/loaders/OBJLoader.js').then(({ OBJLoader }) =>
-      new OBJLoader().loadAsync('/models/animals/sheep.obj'))
-      .then(model => { if (cancelled) model.traverse(o => { if (o instanceof THREE.Mesh) o.geometry.dispose() }); else setSource(model) })
+    void loadSheepAsset()
+      .then(model => { if (!cancelled) setSource(model) })
       .catch(error => console.warn('Market sheep unavailable', error))
     return () => { cancelled = true }
   }, [])
-  useEffect(() => () => {
-    source?.traverse(o => { if (o instanceof THREE.Mesh) o.geometry.dispose() })
-  }, [source])
   const spots = useMemo(() => {
     const frame = gridFrame(terrain)
     const market = stallSpots(frame.L).filter((_, i) => i % 3 === 0).slice(0, 8)

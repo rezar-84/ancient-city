@@ -80,7 +80,7 @@ export function createTheatre(o: TheatreOptions = {}): THREE.Group {
     for (let x = -sw / 2; x <= sw / 2; x += 0.85)
       dentils.push({ x, y: y + 0.12, z: frontZ - 2.1 });
     const dm = b.repeated('marble', new THREE.BoxGeometry(0.32, 0.25, 0.35), dentils);
-    if (dm) dm.userData.noShadow = true;
+    if (dm) { dm.userData.noShadow = true; dm.userData.noCollide = true; }
   }
   for (const x of doors) {
     b.box('marble', doorWidth + 1.4, 0.22, 2.5, x, 1.62, frontZ - 0.4);

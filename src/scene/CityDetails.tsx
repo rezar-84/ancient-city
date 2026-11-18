@@ -160,11 +160,19 @@ export function CityDetails({ terrain }: { terrain: Terrain }) {
   const facades = useMemo(() => {
     const mats = getMaterials() as unknown as Record<string, THREE.Material>
     const CAP = 2600
-    return Object.entries(FACADE_MODULES).map(([name, parts]) => ({
-      name,
-      meshes: parts.map((p) => { const im = new THREE.InstancedMesh(p.geometry, mats[p.key], CAP); im.count = 0; im.castShadow = true; im.receiveShadow = true; im.frustumCulled = false; return im }),
-    }))
+    return Object.entries(FACADE_MODULES).map(([name, parts]) => {
+      const casts = name === 'shop' || name === 'balcony'
+      return {
+        name,
+        meshes: parts.map((p) => { const im = new THREE.InstancedMesh(p.geometry, mats[p.key], CAP); im.count = 0; im.castShadow = casts; im.receiveShadow = true; im.frustumCulled = false; return im }),
+      }
+    })
   }, [])
+  useEffect(() => () => {
+    grass.geometry.dispose(); grass.dispose()
+    facades.forEach((f) => f.meshes.forEach((m) => { m.geometry.dispose(); m.dispose() }))
+  }, [grass, facades])
+  const facadeGrid = useRef<{ n: number; map: Map<string, typeof FACADE_PLACEMENTS> }>({ n: -1, map: new Map() })
   const lastF = useRef({ x: 1e9, z: 1e9, n: -1 })
   const last = useRef({ x: 1e9, z: 1e9 })
   const clock = useRef(0)
@@ -174,16 +182,31 @@ export function CityDetails({ terrain }: { terrain: Terrain }) {
     if (mode !== 'walk') { grass.visible = false; facades.forEach((f) => f.meshes.forEach((m) => { m.count = 0 })); lastF.current.n = -1; return }
     grass.visible = true
     if (Math.hypot(walk.x - lastF.current.x, walk.z - lastF.current.z) > 15 || lastF.current.n !== FACADE_PLACEMENTS.length) {
+      if (facadeGrid.current.n !== FACADE_PLACEMENTS.length) {
+        const map = new Map<string, typeof FACADE_PLACEMENTS>()
+        for (const pl of FACADE_PLACEMENTS) {
+          const k = `${Math.floor(pl.x / 64)},${Math.floor(pl.z / 64)}`
+          let bucket = map.get(k); if (!bucket) { bucket = []; map.set(k, bucket) }
+          bucket.push(pl)
+        }
+        facadeGrid.current = { n: FACADE_PLACEMENTS.length, map }
+      }
       lastF.current = { x: walk.x, z: walk.z, n: FACADE_PLACEMENTS.length }
       const counts = new Map<string, number>()
       const byName = new Map(facades.map((f) => [f.name, f.meshes]))
-      for (const pl of FACADE_PLACEMENTS) {
-        if (Math.abs(pl.x - walk.x) > 110 || Math.abs(pl.z - walk.z) > 110) continue
-        const ms = byName.get(pl.module); if (!ms) continue
-        const i = counts.get(pl.module) ?? 0
-        if (i >= ms[0].instanceMatrix.count) continue
-        for (const m of ms) m.setMatrixAt(i, pl.m)
-        counts.set(pl.module, i + 1)
+      const gx0 = Math.floor((walk.x - 110) / 64), gx1 = Math.floor((walk.x + 110) / 64)
+      const gz0 = Math.floor((walk.z - 110) / 64), gz1 = Math.floor((walk.z + 110) / 64)
+      for (let gx = gx0; gx <= gx1; gx++) for (let gz = gz0; gz <= gz1; gz++) {
+        const bucket = facadeGrid.current.map.get(`${gx},${gz}`)
+        if (!bucket) continue
+        for (const pl of bucket) {
+          if (Math.abs(pl.x - walk.x) > 110 || Math.abs(pl.z - walk.z) > 110) continue
+          const ms = byName.get(pl.module); if (!ms) continue
+          const i = counts.get(pl.module) ?? 0
+          if (i >= ms[0].instanceMatrix.count) continue
+          for (const m of ms) m.setMatrixAt(i, pl.m)
+          counts.set(pl.module, i + 1)
+        }
       }
       for (const f of facades) for (const m of f.meshes) { m.count = counts.get(f.name) ?? 0; m.instanceMatrix.needsUpdate = true }
     }

@@ -98,8 +98,12 @@ function Lights() {
     const d = walking ? 75 : cam.position.distanceTo(ctl.target)
     const ext = THREE.MathUtils.clamp(d * 0.55, walking ? 45 : 60, 1000)
     const sc = l.shadow.camera
-    if (Math.abs(sc.right - ext) > ext * 0.08) {
-      sc.left = -ext; sc.right = ext; sc.top = ext; sc.bottom = -ext; sc.updateProjectionMatrix()
+    const wantNear = Math.max(120, 1600 - ext * 2.5 - 140)
+    const wantFar = Math.min(3400, 1600 + ext * 2.5 + 180)
+    if (Math.abs(sc.right - ext) > ext * 0.08 || Math.abs(sc.near - wantNear) > 40) {
+      sc.left = -ext; sc.right = ext; sc.top = ext; sc.bottom = -ext
+      sc.near = wantNear; sc.far = wantFar
+      sc.updateProjectionMatrix()
     }
     // snap to shadow texels to avoid shimmering while orbiting
     const texel = (2 * ext) / SHADOW_RES

@@ -423,8 +423,13 @@ export function CityGrid({ terrain }: { terrain: Terrain }) {
     if (built && import.meta.env.DEV) console.info('[city grid]', built.stats)
     return () => {
       if (!built) return
-      built.walls.dispose(); built.roofs.forEach((r) => r.dispose()); built.courts.dispose(); built.piers.dispose(); built.streets.geometry.dispose()
-      ;(built.streets.material as THREE.Material).dispose(); built.ruins?.geometry.dispose()
+      built.walls.geometry.dispose(); built.walls.dispose()
+      built.roofs.forEach((r) => { r.geometry.dispose(); r.dispose() })
+      built.courts.geometry.dispose(); built.courts.dispose()
+      built.piers.geometry.dispose(); built.piers.dispose()
+      built.streets.geometry.dispose()
+      ;(built.streets.material as THREE.Material).dispose()
+      built.ruins?.geometry.dispose()
     }
   }, [built])
 

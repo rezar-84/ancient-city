@@ -44,6 +44,8 @@ export class Building {
         mesh.setColorAt(i, new THREE.Color().setScalar(0.94 + 0.06 * ((i * 0.618034) % 1)));
       });
       mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      mesh.computeBoundingSphere();
       mesh.castShadow = mesh.receiveShadow = true;
       this.group.add(mesh);
       return mesh;

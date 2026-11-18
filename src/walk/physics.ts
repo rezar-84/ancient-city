@@ -7,7 +7,13 @@ THREE.BufferGeometry.prototype.disposeBoundsTree = disposeBoundsTree
 THREE.Mesh.prototype.raycast = acceleratedRaycast
 
 
-interface Entry { mesh: THREE.Mesh; sphere: THREE.Sphere }
+interface Entry {
+  mesh: THREE.Mesh
+  sphere: THREE.Sphere
+  instX?: Float32Array
+  instZ?: Float32Array
+  instR?: Float32Array
+}
 
 function shown(o: THREE.Object3D | null): boolean {
   for (let p = o; p; p = p.parent) if (!p.visible) return false
@@ -24,13 +30,29 @@ export class WorldProbe {
   private cells = new Map<string, Entry[]>()
   private ray = new THREE.Raycaster()
   private hits: THREE.Intersection[] = []
+  private instHits: THREE.Intersection[] = []
+  private proxyMesh = new THREE.Mesh()
   private v = new THREE.Vector3()
   private d = new THREE.Vector3()
+  private tmpMat4 = new THREE.Matrix4()
+  private tmpWorld = new THREE.Matrix4()
+  private tmpMat3 = new THREE.Matrix3()
+  private tmpSphere = new THREE.Sphere()
+  private lastEpoch = ''
 
   constructor() { (this.ray as unknown as { firstHitOnly: boolean }).firstHitOnly = true }
 
+  /** Deduplicated refresh when shared between WalkControls and Crowd in the same scene state. */
+  refreshIfNeeded(scene: THREE.Scene, epoch: string) {
+    if (this.lastEpoch === epoch && this.entries.length > 0) return false
+    this.refresh(scene)
+    this.lastEpoch = epoch
+    return true
+  }
+
   refresh(scene: THREE.Scene) {
     this.entries = []
+    this.lastEpoch = ''
     const roots = [scene.getObjectByName('city-root'), scene.getObjectByName('ruins-solid'), scene.getObjectByName('walk-streets')].filter(Boolean) as THREE.Object3D[]
     for (const root of roots) {
       root.updateWorldMatrix(true, true)
@@ -39,14 +61,30 @@ export class WorldProbe {
         if (!m.isMesh || !m.geometry || m.userData.noCollide) return
         const g = m.geometry
         if (!g.boundingSphere) g.computeBoundingSphere()
-        if (!(m as THREE.InstancedMesh).isInstancedMesh && !g.boundsTree && g.attributes.position.count > 60) g.computeBoundsTree()
-        let sphere: THREE.Sphere
+        if (!g.boundsTree && g.attributes.position.count > 60) g.computeBoundsTree()
         if ((m as THREE.InstancedMesh).isInstancedMesh) {
           const im = m as THREE.InstancedMesh
+          if (im.count <= 0) return
           if (!im.boundingSphere) im.computeBoundingSphere()
-          sphere = im.boundingSphere!.clone().applyMatrix4(m.matrixWorld)
-        } else sphere = g.boundingSphere!.clone().applyMatrix4(m.matrixWorld)
-        this.entries.push({ mesh: m, sphere })
+          const sphere = im.boundingSphere!.clone().applyMatrix4(m.matrixWorld)
+          const baseSphere = g.boundingSphere!
+          const count = im.count
+          const instX = new Float32Array(count)
+          const instZ = new Float32Array(count)
+          const instR = new Float32Array(count)
+          for (let i = 0; i < count; i++) {
+            im.getMatrixAt(i, this.tmpMat4)
+            this.tmpWorld.multiplyMatrices(m.matrixWorld, this.tmpMat4)
+            this.tmpSphere.copy(baseSphere).applyMatrix4(this.tmpWorld)
+            instX[i] = this.tmpSphere.center.x
+            instZ[i] = this.tmpSphere.center.z
+            instR[i] = this.tmpSphere.radius
+          }
+          this.entries.push({ mesh: m, sphere, instX, instZ, instR })
+        } else {
+          const sphere = g.boundingSphere!.clone().applyMatrix4(m.matrixWorld)
+          this.entries.push({ mesh: m, sphere })
+        }
       })
     }
     this.cells.clear()
@@ -68,12 +106,37 @@ export class WorldProbe {
 
   private cast(origin: THREE.Vector3, dir: THREE.Vector3, far: number, x: number, z: number) {
     this.ray.set(origin, dir); this.ray.far = far
+    const horizReach = Math.hypot(dir.x, dir.z) * far + 0.05
     let best: THREE.Intersection | null = null
     for (const e of this.nearby(x, z)) {
       if (!shown(e.mesh)) continue
-      this.hits.length = 0
-      e.mesh.raycast(this.ray, this.hits)
-      for (const h of this.hits) if (!best || h.distance < best.distance) best = h
+      if (e.instX && e.instZ && e.instR) {
+        const im = e.mesh as THREE.InstancedMesh
+        const ix = e.instX, iz = e.instZ, ir = e.instR
+        const n = Math.min(im.count, ix.length)
+        this.proxyMesh.geometry = im.geometry
+        this.proxyMesh.material = im.material
+        for (let idx = 0; idx < n; idx++) {
+          const dx = ix[idx] - x, dz = iz[idx] - z
+          const lim = ir[idx] + horizReach
+          if (dx * dx + dz * dz > lim * lim) continue
+          im.getMatrixAt(idx, this.tmpMat4)
+          this.proxyMesh.matrixWorld.multiplyMatrices(im.matrixWorld, this.tmpMat4)
+          this.instHits.length = 0
+          this.proxyMesh.raycast(this.ray, this.instHits)
+          for (const h of this.instHits) {
+            if (!best || h.distance < best.distance) {
+              h.instanceId = idx
+              h.object = im
+              best = h
+            }
+          }
+        }
+      } else {
+        this.hits.length = 0
+        e.mesh.raycast(this.ray, this.hits)
+        for (const h of this.hits) if (!best || h.distance < best.distance) best = h
+      }
     }
     return best
   }
@@ -110,13 +173,15 @@ export class WorldProbe {
     if (!h || !h.face) return null
     out.copy(h.face.normal)
     if (h.instanceId !== undefined && h.object instanceof THREE.InstancedMesh) {
-      const instance = new THREE.Matrix4()
-      h.object.getMatrixAt(h.instanceId, instance)
-      out.applyNormalMatrix(new THREE.Matrix3().getNormalMatrix(instance))
+      h.object.getMatrixAt(h.instanceId, this.tmpMat4)
+      out.applyNormalMatrix(this.tmpMat3.getNormalMatrix(this.tmpMat4))
     }
-    out.applyNormalMatrix(new THREE.Matrix3().getNormalMatrix(h.object.matrixWorld))
+    out.applyNormalMatrix(this.tmpMat3.getNormalMatrix(h.object.matrixWorld))
     out.y = 0
     if (out.lengthSq() < 1e-4) out.set(-this.d.x, 0, -this.d.z)
     return out.normalize()
   }
 }
+
+/** Shared collision probe so WalkControls and Crowd share one BVH & cell cache per scene epoch. */
+export const sharedWorldProbe = new WorldProbe()

@@ -54,7 +54,8 @@ export function WalkHUD() {
   useEffect(() => {
     if (!active) return
     let raf = 0
-    const tick = () => {
+    let lastNearAt = -1e9
+    const tick = (now: number) => {
       const t = getTerrain()
       if (t) {
         const [la, lo] = t.toLatLon(walk.x, walk.z)
@@ -66,17 +67,20 @@ export function WalkHUD() {
         }
         if (ribbon.current) ribbon.current.style.transform = `translateX(${-heading * 2}px)`
         if (tint.current) tint.current.style.opacity = walk.underwater ? '1' : '0'
-        // nearest standing monument within reach
-        let best: string | null = null, bd = 70
-        for (const l of LANDMARKS) {
-          if (year < l.built || (l.until !== undefined && year > l.until)) continue
-          const [x, z] = t.toLocal(l.lat, l.lon)
-          const d = Math.hypot(x - walk.x, z - walk.z)
-          if (d < bd) { bd = d; best = l.id }
+        if (now - lastNearAt >= 100) {
+          lastNearAt = now
+          // nearest standing monument within reach
+          let best: string | null = null, bd = 70
+          for (const l of LANDMARKS) {
+            if (year < l.built || (l.until !== undefined && year > l.until)) continue
+            const [x, z] = t.toLocal(l.lat, l.lon)
+            const d = Math.hypot(x - walk.x, z - walk.z)
+            if (d < bd) { bd = d; best = l.id }
+          }
+          setNear((p) => (p === best ? p : best))
         }
-        setNear((p) => (p === best ? p : best))
-        setLocked(walk.locked)
-        if (walk.moving) setMoved(true)
+        setLocked((p) => (p === walk.locked ? p : walk.locked))
+        if (walk.moving) setMoved((p) => (p ? p : true))
       }
       raf = requestAnimationFrame(tick)
     }
@@ -191,21 +195,24 @@ export function WalkHUD() {
   )
 }
 
-/** Touch joystick (phones/tablets). */
+/** Touch joystick (phones/tablets) — direct DOM transform avoids React rerenders on pointermove. */
 function Joystick() {
   const base = useRef<HTMLDivElement>(null)
-  const [knob, setKnob] = useState({ x: 0, y: 0 })
+  const knobRef = useRef<HTMLDivElement>(null)
   const id = useRef<number | null>(null)
   const R = 48
+  const setTransform = (x: number, y: number) => {
+    if (knobRef.current) knobRef.current.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`
+  }
   const update = (cx: number, cy: number) => {
     const r = base.current!.getBoundingClientRect()
     let dx = cx - (r.left + r.width / 2), dy = cy - (r.top + r.height / 2)
     const d = Math.hypot(dx, dy)
     if (d > R) { dx *= R / d; dy *= R / d }
-    setKnob({ x: dx, y: dy })
+    setTransform(dx, dy)
     walk.joy.x = dx / R; walk.joy.y = dy / R
   }
-  const end = () => { id.current = null; setKnob({ x: 0, y: 0 }); walk.joy.x = walk.joy.y = 0 }
+  const end = () => { id.current = null; setTransform(0, 0); walk.joy.x = walk.joy.y = 0 }
   return (
     <div
       ref={base} data-joystick
@@ -214,7 +221,7 @@ function Joystick() {
       onPointerMove={(ev) => { if (ev.pointerId === id.current) update(ev.clientX, ev.clientY) }}
       onPointerUp={end} onPointerCancel={end}
     >
-      <div className="absolute left-1/2 top-1/2 h-14 w-14 -translate-x-1/2 -translate-y-1/2 rounded-full bg-travertine/80 shadow-lg" style={{ transform: `translate(calc(-50% + ${knob.x}px), calc(-50% + ${knob.y}px))` }} />
+      <div ref={knobRef} className="absolute left-1/2 top-1/2 h-14 w-14 -translate-x-1/2 -translate-y-1/2 rounded-full bg-travertine/80 shadow-lg" style={{ transform: 'translate(-50%, -50%)' }} />
     </div>
   )
 }

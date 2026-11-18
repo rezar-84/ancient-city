@@ -13,18 +13,28 @@ import {
 } from './npcGeometry'
 import { gridFrame, stallSpots } from './spots'
 import { walk } from './WalkControls'
-import { WorldProbe } from './physics'
+import { sharedWorldProbe } from './physics'
 import {
   createRiggedCitizen, loadCitizenAssets,
   type AgeGroup, type CitizenRole, type FabricKind, type GarmentCut,
 } from './riggedCitizen'
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js'
 import { cartPose } from './cartRoute'
 import { MarketSheep } from './MarketSheep'
 
 type Variant = 'greek' | 'roman' | 'byzantine'
 type PropKind = 'amphora' | 'basket' | 'staff' | 'scroll'
 const variantFor = (year: number): Variant => (year < -133 ? 'greek' : year < 330 ? 'roman' : 'byzantine')
+
+let horseAssetPromise: Promise<GLTF> | null = null
+function loadHorseAsset() {
+  if (!horseAssetPromise) {
+    horseAssetPromise = new GLTFLoader().loadAsync('/models/animals/cart-horse.glb')
+      .catch(error => { horseAssetPromise = null; throw error })
+  }
+  return horseAssetPromise
+}
 
 function rng(seed: number) {
   let s = seed >>> 0
@@ -40,8 +50,7 @@ interface Npc {
   fabric: FabricKind
   stature: number
   build: number
-  prop?: PropKind
-  propSlot?: number
+  propIdx: number // -1 none, 0 amphora, 1 basket, 2 staff, 3 scroll
   u: number; v: number; dir: number; speed: number; min: number; max: number
   /** fixed spot (idle/merchant/priest/guard) in local metres, and facing */
   x?: number; z?: number; face?: number
@@ -80,6 +89,13 @@ function roleBodyMetrics(role: CitizenRole, age: AgeGroup, female: boolean, rand
   return { stature, build }
 }
 
+const NEAR_CAP = 128
+const NEAR_R2 = 55 * 55
+const WALK_MAX_R2 = 380 * 380
+const PROP_MAX_R2 = 115 * 115
+const CART_MAX_R2 = 360 * 360
+const PROP_INDEX: Record<PropKind, number> = { amphora: 0, basket: 1, staff: 2, scroll: 3 }
+
 export function Crowd({ terrain }: { terrain: Terrain }) {
   const mode = useApp((s) => s.mode)
   const [horse, setHorse] = useState<{ root: THREE.Group; mixer: THREE.AnimationMixer; syncHarness: () => void } | null>(null)
@@ -87,26 +103,33 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
     if (mode !== 'walk') return
     let active = true
     let dispose: (() => void) | undefined
-    new GLTFLoader().load('/models/animals/cart-horse.glb', model => {
+    void loadHorseAsset().then(model => {
       const rigGroup = new THREE.Group()
-      const meshRoot = model.scene
+      const meshRoot = cloneSkeleton(model.scene)
       const mixer = new THREE.AnimationMixer(meshRoot)
       const harness = createDetailedHorseHarness()
+      const clonedMaterials: THREE.Material[] = []
+      meshRoot.traverse(o => {
+        if (o instanceof THREE.Mesh) {
+          if (Array.isArray(o.material)) {
+            o.material = o.material.map(m => { const cm = m.clone(); clonedMaterials.push(cm); return cm })
+          } else {
+            const cm = o.material.clone()
+            clonedMaterials.push(cm)
+            o.material = cm
+          }
+          o.castShadow = o.receiveShadow = true
+        }
+      })
       dispose = () => {
         mixer.stopAllAction()
         mixer.uncacheRoot(meshRoot)
         harness.dispose()
-        meshRoot.traverse(o => {
-          if (o instanceof THREE.Mesh) {
-            o.geometry.dispose()
-            for (const m of Array.isArray(o.material) ? o.material : [o.material]) m.dispose()
-          }
-          if (o instanceof THREE.SkinnedMesh) o.skeleton.dispose()
-        })
+        clonedMaterials.forEach(m => m.dispose())
+        meshRoot.traverse(o => { if (o instanceof THREE.SkinnedMesh) o.skeleton.dispose() })
       }
       if (!active) { dispose(); return }
       meshRoot.scale.setScalar(0.003)
-      meshRoot.traverse(o => { if (o instanceof THREE.Mesh) o.castShadow = o.receiveShadow = true })
       rigGroup.add(meshRoot, harness.body, harness.head)
       const torsoBone = meshRoot.getObjectByName('Torso')
       const headBone = meshRoot.getObjectByName('Head')
@@ -134,7 +157,7 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
       syncHarness()
       rigGroup.visible = false
       setHorse({ root: rigGroup, mixer, syncHarness })
-    }, undefined, error => console.warn('Detailed cart horse unavailable', error))
+    }).catch(error => console.warn('Detailed cart horse unavailable', error))
     return () => { active = false; dispose?.(); setHorse(null) }
   }, [mode])
 
@@ -148,8 +171,9 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
   }, [mode, citizenAssets])
 
   const scene = useThree(s => s.scene)
-  const probe = useMemo(() => new WorldProbe(), [])
-  const groundCache = useRef(new Map<number, { x: number; z: number; y: number }>())
+  const probe = sharedWorldProbe
+  const groundCache = useRef(new Float64Array(0))
+  const probeBudget = useRef(0)
   const era = useApp((s) => s.era)
   const showGrid = useApp((s) => s.showGrid)
   const year = useApp((s) => s.year)
@@ -158,23 +182,35 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
   const visible = era === 'ancient' && (mode === 'walk' || (mode === 'explore' && showGrid) || mode === 'tour')
 
   useEffect(() => {
-    const timer = window.setTimeout(() => { probe.refresh(scene); groundCache.current.clear() }, 400)
+    const epoch = `${scene.uuid}:${year}:${showGrid}`
+    const timer = window.setTimeout(() => {
+      probe.refreshIfNeeded(scene, epoch)
+      groundCache.current.fill(NaN)
+    }, 400)
     return () => window.clearTimeout(timer)
   }, [scene, probe, year, showGrid, mode])
 
   const surfaceY = (x: number, z: number, id: number) => {
     const terrainY = terrain.heightAt(x, z)
-    const cached = groundCache.current.get(id)
-    if (!cached || Math.hypot(x - cached.x, z - cached.z) > 0.35) {
+    const cache = groundCache.current
+    const base = id * 3
+    if (base + 2 >= cache.length) return terrainY + 0.015
+    const cx = cache[base], cz = cache[base + 1], cy = cache[base + 2]
+    const dx = x - cx, dz = z - cz
+    if (Number.isNaN(cy) || dx * dx + dz * dz > 0.35 * 0.35) {
+      if (probeBudget.current <= 0) return (Number.isNaN(cy) ? terrainY : Math.max(terrainY, cy)) + 0.015
+      probeBudget.current--
       const y = Math.max(terrainY, probe.ground(x, z, terrainY + 2.5))
-      groundCache.current.set(id, { x, z, y })
+      cache[base] = x; cache[base + 1] = z; cache[base + 2] = y
       return y + 0.015
     }
-    return Math.max(terrainY, cached.y) + 0.015
+    return Math.max(terrainY, cy) + 0.015
   }
 
   const sim = useMemo(() => {
     const F = gridFrame(terrain)
+    const [originX, originZ] = F.P(0, 0)
+    const ux = F.u[0], uz = F.u[1], vx = F.v[0], vz = F.v[1]
     const rand = rng(85 + variant.length)
     const npcs: Npc[] = []
     const femaleFlags: number[] = []
@@ -189,7 +225,7 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
       if (role === 'merchant' || role === 'priest') return r < 0.12 ? 'young' : r < 0.62 ? 'adult' : 'older'
       return r < 0.22 ? 'young' : r < 0.76 ? 'adult' : 'older'
     }
-    const pushNpc = (entry: Omit<Npc, 'age' | 'cut' | 'fabric' | 'stature' | 'build'>, forceGender?: 0 | 1) => {
+    const pushNpc = (entry: Omit<Npc, 'age' | 'cut' | 'fabric' | 'stature' | 'build' | 'propIdx'> & { prop?: PropKind }, forceGender?: 0 | 1) => {
       const isFem = forceGender ?? (entry.role === 'soldier' ? 0 : entry.role === 'porter' ? (rand() < 0.15 ? 1 : 0) : rand() < 0.46 ? 1 : 0)
       const age = pickAge(entry.role)
       const { stature, build } = roleBodyMetrics(entry.role, age, !!isFem, rand)
@@ -197,8 +233,9 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
       const fabric: FabricKind = entry.role === 'porter' ? 'linen'
         : entry.role === 'merchant' ? (rand() < 0.6 ? 'linen' : 'wool')
         : variant === 'roman' ? (rand() < 0.55 ? 'linen' : 'wool') : (rand() < 0.35 ? 'linen' : 'wool')
+      const propIdx = entry.prop ? PROP_INDEX[entry.prop] : -1
       femaleFlags.push(isFem)
-      npcs.push({ ...entry, age, cut, fabric, stature, build })
+      npcs.push({ ...entry, age, cut, fabric, stature, build, propIdx })
     }
 
     const pop = variant === 'roman' ? 1 : 0.68
@@ -207,7 +244,6 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
       const lane = [-10.0, -6, -2.2, 2.2, 6, 10.0][Math.floor(rand() * 6)]
       let uu = 0
       for (let k = 0; k < 8; k++) { uu = rand() < 0.48 ? 14 + rand() * 270 : 20 + rand() * (F.L - 40); if (!solidMonumentAt(...F.P(uu, lane), spawnYr, 1)) break }
-      // Distribute roles along the main Plateia: porters hauling amphorae/baskets, patrolling soldiers, pilgrims, merchants, and residents
       const roll = rand()
       let role: CitizenRole = 'resident'
       let prop: PropKind | undefined
@@ -246,7 +282,7 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
       })
     }
 
-    // Stationed gate & sanctuary soldiers on watch (flanking arches so their silhouette reads clearly against the stone!)
+    // Stationed gate & sanctuary soldiers on watch
     const addGateGuards = (gateId: string, offsets: Array<[number, number]>) => {
       const l = LANDMARKS.find(x => x.id === gateId)
       if (!l || !stands(gateId)) return
@@ -296,7 +332,7 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
     if (stands('tritons')) { const [x, z] = at('tritons'); groupAt(x, z, 3, 0.15) }
     if (stands('theatre')) { const [x, z] = at('theatre'); groupAt(x - 40, z, 3, 0.15) }
 
-    // Merchants behind the portico stalls (with nearby porters unloading baskets/amphorae)
+    // Merchants behind the portico stalls
     const stalls = stallSpots(F.L)
     stalls.forEach((st, idx) => {
       const [x, z] = F.P(st.u, st.side * 10.6)
@@ -318,7 +354,7 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
     }
     pray('apollo', 4, 14); pray('ploutonion', 4, 9); pray('martyrium', 5, 22); pray('cathedral', 4, 16); pray('philip-church', 4, 14)
 
-    // Era-specific pilgrim processions: St Philip's Church <-> Martyrium in AD 500; Sacred Spring <-> Ploutonion in 150 BC / AD 200
+    // Era-specific pilgrim processions
     if (variant === 'byzantine' && stands('martyrium')) {
       const [ax, az] = at('philip-church'), [bx, bz] = at('martyrium')
       for (let i = 0; i < 26; i++) {
@@ -343,23 +379,43 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
       }
     }
 
-    // Meshes & attributes
+    // Shared material & near/far LOD instanced meshes
     const pal = ERA_PALETTES[variant]
-    const pGeo = createPersonGeometry(variant)
-    const pAttr = createCrowdAttributes(npcs.length + 1)
-    pGeo.setAttribute('iAnim', pAttr.anim)
-    pGeo.setAttribute('iTint0', pAttr.tint0)
-    pGeo.setAttribute('iTint1', pAttr.tint1)
-    pGeo.setAttribute('iTint2', pAttr.tint2)
-    pGeo.setAttribute('iStyle', pAttr.style)
-    pGeo.setAttribute('iPose', pAttr.pose)
     const pMat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.88 })
     patchCrowdMaterial(pMat, 'person')
-    const people = new THREE.InstancedMesh(pGeo, pMat, npcs.length + 1) // last instance = the player's avatar
+
+    const nearCap = Math.min(NEAR_CAP, npcs.length + 1)
+    const nearGeo = createPersonGeometry(variant, 'near')
+    const nearAttr = createCrowdAttributes(nearCap)
+    nearGeo.setAttribute('iAnim', nearAttr.anim)
+    nearGeo.setAttribute('iTint0', nearAttr.tint0)
+    nearGeo.setAttribute('iTint1', nearAttr.tint1)
+    nearGeo.setAttribute('iTint2', nearAttr.tint2)
+    nearGeo.setAttribute('iStyle', nearAttr.style)
+    nearGeo.setAttribute('iPose', nearAttr.pose)
+    const nearPeople = new THREE.InstancedMesh(nearGeo, pMat, nearCap)
+    nearPeople.count = 0
+
+    const farCap = Math.max(1, npcs.length)
+    const farGeo = createPersonGeometry(variant, 'far')
+    const farAttr = createCrowdAttributes(farCap)
+    farGeo.setAttribute('iAnim', farAttr.anim)
+    farGeo.setAttribute('iTint0', farAttr.tint0)
+    farGeo.setAttribute('iTint1', farAttr.tint1)
+    farGeo.setAttribute('iTint2', farAttr.tint2)
+    farGeo.setAttribute('iStyle', farAttr.style)
+    farGeo.setAttribute('iPose', farAttr.pose)
+    const farPeople = new THREE.InstancedMesh(farGeo, pMat, farCap)
+    farPeople.count = 0
+
     const c = new THREE.Color(), hc = new THREE.Color()
     const female = new Uint8Array(femaleFlags)
+    const totalSlots = npcs.length + 1
+    const npcTint0 = new Float32Array(totalSlots * 3)
+    const npcTint1 = new Float32Array(totalSlots * 3)
+    const npcTint2 = new Float32Array(totalSlots * 3)
+    const npcStyle = new Float32Array(totalSlots * 4)
 
-    // Distinct role-tuned mineral dyes & fabrics
     const soldierCloths: Record<Variant, string> = { greek: '#a44936', roman: '#963b2d', byzantine: '#7b352f' }
     const soldierAccents: Record<Variant, string> = { greek: '#b78d4a', roman: '#a88342', byzantine: '#9e8858' }
     const porterCloths: Record<Variant, string> = { greek: '#cbbda2', roman: '#c6b79b', byzantine: '#b8a88b' }
@@ -378,19 +434,16 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
         : n.role === 'porter' ? '#6c4d35'
         : n.role === 'priest' && variant === 'byzantine' ? '#5e4936'
         : pal.accent[Math.floor(rand() * pal.accent.length)]
-      c.set(clothHex); pAttr.tint0.setXYZ(i, c.r, c.g, c.b)
-      c.set(SKIN_TONES[Math.floor(rand() * SKIN_TONES.length)]); pAttr.tint1.setXYZ(i, c.r, c.g, c.b)
-      c.set(accentHex); pAttr.tint2.setXYZ(i, c.r, c.g, c.b)
-      pAttr.anim.setXYZW(i, n.phase, 0, n.pose, 0)
-      pAttr.pose.setXY(i, n.pose, 1)
+      c.set(clothHex); npcTint0[i * 3] = c.r; npcTint0[i * 3 + 1] = c.g; npcTint0[i * 3 + 2] = c.b
+      c.set(SKIN_TONES[Math.floor(rand() * SKIN_TONES.length)]); npcTint1[i * 3] = c.r; npcTint1[i * 3 + 1] = c.g; npcTint1[i * 3 + 2] = c.b
+      c.set(accentHex); npcTint2[i * 3] = c.r; npcTint2[i * 3 + 1] = c.g; npcTint2[i * 3 + 2] = c.b
 
-      // Hair color & style (veiled matrons/monks, buns, curly/short hair, silver-grey elders & beards)
       if (n.age === 'older') hc.set(rand() < 0.5 ? '#9e978d' : '#b8b1a6')
       else hc.set(pal.hair[Math.floor(rand() * pal.hair.length)])
       const veiled = (isFem && (variant === 'byzantine' || n.role === 'priest' || rand() < 0.35)) || (n.role === 'priest' && variant === 'byzantine')
       const hairCode = veiled ? HAIR.veiled : isFem ? HAIR.bun : (n.age === 'older' && rand() < 0.28 ? HAIR.bald : rand() < 0.45 ? HAIR.curly : HAIR.short)
       const bearded = !isFem && n.age !== 'young' && (variant !== 'roman' || n.role !== 'soldier' ? rand() < 0.58 : rand() < 0.25)
-      pAttr.style.setXYZW(i, hc.r, hc.g, hc.b, hairCode + (bearded ? 5 : 0))
+      npcStyle[i * 4] = hc.r; npcStyle[i * 4 + 1] = hc.g; npcStyle[i * 4 + 2] = hc.b; npcStyle[i * 4 + 3] = hairCode + (bearded ? 5 : 0)
     })
 
     const ch = CHARACTERS.find((x) => x.id === character) ?? CHARACTERS[2]
@@ -398,10 +451,11 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
       ch.id === 'theano' || ch.id === 'philippos' ? 'priest'
       : ch.id === 'eudokia' ? 'pilgrim'
       : ch.id === 'nikias' || ch.id === 'aurelia' ? 'merchant' : 'resident'
-    c.set(ch.colors.body); pAttr.tint0.setXYZ(npcs.length, c.r, c.g, c.b)
-    c.set(SKIN_TONES[2]); pAttr.tint1.setXYZ(npcs.length, c.r, c.g, c.b)
-    c.set(ch.colors.accent); pAttr.tint2.setXYZ(npcs.length, c.r, c.g, c.b)
-    pAttr.style.setXYZW(npcs.length, 0.16, 0.11, 0.08, ch.gender === 'f' ? HAIR.bun : HAIR.short)
+    const av = npcs.length
+    c.set(ch.colors.body); npcTint0[av * 3] = c.r; npcTint0[av * 3 + 1] = c.g; npcTint0[av * 3 + 2] = c.b
+    c.set(SKIN_TONES[2]); npcTint1[av * 3] = c.r; npcTint1[av * 3 + 1] = c.g; npcTint1[av * 3 + 2] = c.b
+    c.set(ch.colors.accent); npcTint2[av * 3] = c.r; npcTint2[av * 3 + 1] = c.g; npcTint2[av * 3 + 2] = c.b
+    npcStyle[av * 4] = 0.16; npcStyle[av * 4 + 1] = 0.11; npcStyle[av * 4 + 2] = 0.08; npcStyle[av * 4 + 3] = ch.gender === 'f' ? HAIR.bun : HAIR.short
 
     const avatar = citizenAssets ? createRiggedCitizen(variant, { cloth: new THREE.Color(ch.colors.body), skin: new THREE.Color(SKIN_TONES[2]), accent: new THREE.Color(ch.colors.accent) }, ch.gender) : null
     if (avatar) {
@@ -413,7 +467,7 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
         age: 'adult',
       })
     }
-    const poolSize = window.matchMedia('(pointer: coarse)').matches ? 2 : 6
+    const poolSize = window.matchMedia('(pointer: coarse)').matches ? 2 : 4
     const closePeople = Array.from({ length: citizenAssets ? poolSize : 0 }, (_, slotIndex) => {
       const gender = slotIndex % 2 ? 'f' as const : 'm' as const
       const citizen = createRiggedCitizen(variant, { cloth: new THREE.Color(pal.cloth[0]), skin: new THREE.Color(SKIN_TONES[2]), accent: new THREE.Color(pal.accent[0]) }, gender)
@@ -421,39 +475,33 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
       return { citizen, id: -1, gender }
     })
 
-    // Shared instanced held props (amphora, reed pack basket, walking staff / spear, scroll)
+    // Shared instanced held props (dynamically compacted to nearby carriers each frame)
     const propKinds: PropKind[] = ['amphora', 'basket', 'staff', 'scroll']
-    const propCarriers: Record<PropKind, number[]> = { amphora: [], basket: [], staff: [], scroll: [] }
-    npcs.forEach((n, idx) => {
-      if (n.prop) {
-        n.propSlot = propCarriers[n.prop].length
-        propCarriers[n.prop].push(idx)
-      }
-    })
+    const propCarrierTotals = [0, 0, 0, 0]
+    for (const n of npcs) if (n.propIdx >= 0) propCarrierTotals[n.propIdx]++
     const propTints: Record<PropKind, string> = { amphora: '#b86843', basket: '#a68552', staff: '#6d5034', scroll: '#e6dcc5' }
-    const propMeshes = propKinds.map((kind) => {
-      const carriers = propCarriers[kind]
-      const count = Math.max(1, carriers.length)
+    const propMeshes = propKinds.map((kind, idx) => {
+      const cap = Math.max(1, propCarrierTotals[idx])
       const geo = createHeldPropGeometry(kind)
-      const attr = createCrowdAttributes(count)
+      const attr = createCrowdAttributes(cap)
       geo.setAttribute('iAnim', attr.anim)
       geo.setAttribute('iTint0', attr.tint0)
       geo.setAttribute('iTint1', attr.tint1)
       geo.setAttribute('iTint2', attr.tint2)
       geo.setAttribute('iPose', attr.pose)
       c.set(propTints[kind])
-      for (let i = 0; i < count; i++) {
+      for (let i = 0; i < cap; i++) {
         attr.tint0.setXYZ(i, c.r, c.g, c.b)
         attr.tint1.setXYZ(i, c.r, c.g, c.b)
         attr.tint2.setXYZ(i, c.r, c.g, c.b)
       }
-      const mesh = new THREE.InstancedMesh(geo, pMat, count)
-      mesh.count = carriers.length
-      mesh.castShadow = true
+      const mesh = new THREE.InstancedMesh(geo, pMat, cap)
+      mesh.count = 0
+      mesh.castShadow = false
       mesh.receiveShadow = true
       mesh.frustumCulled = false
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
-      return { kind, carriers, mesh, attr }
+      return { kind, hasCarriers: propCarrierTotals[idx] > 0, mesh, attr, cap }
     })
 
     const nCarts = variant === 'roman' ? 16 : 9
@@ -465,32 +513,45 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
     const hMat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.8 }); patchCrowdMaterial(hMat, 'horse')
     const cMat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.9 }); patchCrowdMaterial(cMat, 'cart')
     const coats = ['#6b4a32', '#3b2a1e', '#8a6a4a', '#d8c6a8', '#5a4a40']
-    carts.forEach((cr, i) => {
-      c.set(coats[i % coats.length]); hAttr.tint0.setXYZ(i, c.r, c.g, c.b)
+    const horseTints = new Float32Array(nCarts * 3)
+    carts.forEach((_, i) => {
+      c.set(coats[i % coats.length]); horseTints[i * 3] = c.r; horseTints[i * 3 + 1] = c.g; horseTints[i * 3 + 2] = c.b
       c.set('#2a1d15'); hAttr.tint1.setXYZ(i, c.r, c.g, c.b)
       c.set('#5c3322'); hAttr.tint2.setXYZ(i, c.r, c.g, c.b)
-      hAttr.anim.setXYZW(i, cr.phase, 0.5, 0, 0); cAttr.anim.setXYZW(i, cr.phase, 0.5, 0, 0)
       c.set('#8a6a4a'); cAttr.tint0.setXYZ(i, c.r, c.g, c.b)
       c.set('#b89b72'); cAttr.tint1.setXYZ(i, c.r, c.g, c.b)
       cAttr.tint2.setXYZ(i, 0.36, 0.24, 0.18)
     })
     const horses = new THREE.InstancedMesh(hGeo, hMat, nCarts)
     const cartMesh = new THREE.InstancedMesh(cGeo, cMat, nCarts)
-    for (const m of [people, horses, cartMesh]) { m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage) }
-    const depthMats = ([['person', people], ['horse', horses], ['cart', cartMesh]] as const).map(([kind, mesh]) => {
+    for (const m of [nearPeople, horses, cartMesh]) { m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage) }
+    farPeople.castShadow = false; farPeople.receiveShadow = true; farPeople.frustumCulled = false; farPeople.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+
+    const depthMats = ([['person', nearPeople], ['horse', horses], ['cart', cartMesh]] as const).map(([kind, mesh]) => {
       const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking })
       patchCrowdMaterial(depth, kind)
       mesh.customDepthMaterial = depth
       return depth
     })
-    for (const pm of propMeshes) pm.mesh.customDepthMaterial = depthMats[0]
+
+    const cacheEntities = npcs.length + 1 + nCarts * 2
+    groundCache.current = new Float64Array(cacheEntities * 3).fill(NaN)
     NPC_STATE.x = new Float32Array(npcs.length); NPC_STATE.z = new Float32Array(npcs.length); NPC_STATE.count = npcs.length; NPC_STATE.female = female
-    return { F, npcs, carts, people, horses, cartMesh, propMeshes, pAttr, hAttr, cAttr, avatar, closePeople, mats: [pMat, hMat, cMat, ...depthMats] }
+
+    return {
+      F, originX, originZ, ux, uz, vx, vz,
+      npcs, carts, nearPeople, farPeople, horses, cartMesh, propMeshes,
+      nearAttr, farAttr, hAttr, cAttr,
+      npcTint0, npcTint1, npcTint2, npcStyle, horseTints,
+      avatar, closePeople, mats: [pMat, hMat, cMat, ...depthMats],
+      bestIds: new Int32Array(8), bestD2: new Float64Array(8),
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [terrain, variant, character, citizenAssets, mode === 'walk' ? year : 0])
 
   useEffect(() => () => {
-    sim.people.geometry.dispose(); sim.people.dispose()
+    sim.nearPeople.geometry.dispose(); sim.nearPeople.dispose()
+    sim.farPeople.geometry.dispose(); sim.farPeople.dispose()
     sim.horses.geometry.dispose(); sim.horses.dispose()
     sim.cartMesh.geometry.dispose(); sim.cartMesh.dispose()
     sim.propMeshes.forEach(pm => { pm.mesh.geometry.dispose(); pm.mesh.dispose() })
@@ -510,49 +571,99 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
   const pos = useMemo(() => new THREE.Vector3(), [])
   const one = useMemo(() => new THREE.Vector3(1, 1, 1), [])
   const up = useMemo(() => new THREE.Vector3(0, 1, 0), [])
-  const hidden = useMemo(() => new THREE.Vector3(0, -9999, 0), [])
   const tmpCloth = useMemo(() => new THREE.Color(), [])
   const tmpSkin = useMemo(() => new THREE.Color(), [])
   const tmpAccent = useMemo(() => new THREE.Color(), [])
+  const propCounts = useMemo(() => new Int32Array(4), [])
   const clock = useRef(0)
 
-  useFrame((_, rawDt) => {
+  useFrame(({ camera }, rawDt) => {
     if (!visible) return
     if (mode === 'walk' && walkInputBlocked(useApp.getState())) return
     const dt = Math.min(rawDt, 0.1); clock.current += dt
+    probeBudget.current = 64
     const simYear = mode === 'walk' ? year : null
-    const { F, npcs, carts, people, horses, cartMesh, propMeshes, pAttr, mats } = sim
+    const {
+      F, originX, originZ, ux, uz, vx, vz,
+      npcs, carts, nearPeople, farPeople, horses, cartMesh, propMeshes,
+      nearAttr, farAttr, hAttr, cAttr,
+      npcTint0, npcTint1, npcTint2, npcStyle, horseTints,
+      mats, bestIds, bestD2,
+    } = sim
     for (const m of mats) (m.userData.uTime as { value: number }).value = clock.current
     const walking = mode === 'walk'
     const px = walk.x, pz = walk.z
-    // Keep expensive skeletal animation limited to the player and a small nearby pool.
-    const candidates: number[] = []
-    if (walking && sim.closePeople.length > 0) {
-      const scored: Array<{ i: number; d: number }> = []
+    const refX = walking ? px : camera.position.x
+    const refZ = walking ? pz : camera.position.z
+    const nowMs = performance.now()
+    const wavingNow = walking && nowMs < walk.waveUntil
+
+    // Zero-alloc top-K nearest selection for the close skeletal citizen pool
+    let candCount = 0
+    const poolLen = sim.closePeople.length
+    if (walking && poolLen > 0) {
+      bestD2.fill(Infinity)
       for (let i = 0; i < npcs.length; i++) {
         const dx = NPC_STATE.x[i] - px, dz = NPC_STATE.z[i] - pz
         const d2 = dx * dx + dz * dz
-        if (d2 < 22 * 22) scored.push({ i, d: d2 })
+        if (d2 >= 16 * 16) continue
+        if (candCount < poolLen || d2 < bestD2[poolLen - 1]) {
+          let posIdx = Math.min(candCount, poolLen - 1)
+          while (posIdx > 0 && d2 < bestD2[posIdx - 1]) {
+            bestD2[posIdx] = bestD2[posIdx - 1]
+            bestIds[posIdx] = bestIds[posIdx - 1]
+            posIdx--
+          }
+          bestD2[posIdx] = d2
+          bestIds[posIdx] = i
+          if (candCount < poolLen) candCount++
+        }
       }
-      scored.sort((a, b) => a.d - b.d)
-      for (let k = 0; k < Math.min(sim.closePeople.length, scored.length); k++) candidates.push(scored[k].i)
     }
-    for (const slot of sim.closePeople) {
-      if (!candidates.includes(slot.id)) { slot.id = -1; slot.citizen.root.visible = false }
+    for (let s = 0; s < poolLen; s++) {
+      const slot = sim.closePeople[s]
+      let keep = false
+      for (let k = 0; k < candCount; k++) if (bestIds[k] === slot.id) { keep = true; break }
+      if (!keep) { slot.id = -1; slot.citizen.root.visible = false }
     }
-    for (const id of candidates) if (!sim.closePeople.some(slot => slot.id === id)) {
-      const slot = sim.closePeople.find(slot => slot.id === -1 && slot.gender === (NPC_STATE.female[id] ? 'f' : 'm'))
-      if (slot) {
-        const npc = npcs[id]
-        slot.id = id
-        slot.citizen.reset()
-        slot.citizen.configure({ role: npc.role, cut: npc.cut, fabric: npc.fabric, age: npc.age })
-        slot.citizen.setPalette({
-          cloth: tmpCloth.fromBufferAttribute(pAttr.tint0, id),
-          skin: tmpSkin.fromBufferAttribute(pAttr.tint1, id),
-          accent: tmpAccent.fromBufferAttribute(pAttr.tint2, id),
-        })
+    for (let k = 0; k < candCount; k++) {
+      const id = bestIds[k]
+      let already = false
+      for (let s = 0; s < poolLen; s++) if (sim.closePeople[s].id === id) { already = true; break }
+      if (already) continue
+      const wantGender = NPC_STATE.female[id] ? 'f' : 'm'
+      for (let s = 0; s < poolLen; s++) {
+        const slot = sim.closePeople[s]
+        if (slot.id === -1 && slot.gender === wantGender) {
+          const npc = npcs[id]
+          slot.id = id
+          slot.citizen.reset()
+          slot.citizen.configure({ role: npc.role, cut: npc.cut, fabric: npc.fabric, age: npc.age })
+          slot.citizen.setPalette({
+            cloth: tmpCloth.setRGB(npcTint0[id * 3], npcTint0[id * 3 + 1], npcTint0[id * 3 + 2]),
+            skin: tmpSkin.setRGB(npcTint1[id * 3], npcTint1[id * 3 + 1], npcTint1[id * 3 + 2]),
+            accent: tmpAccent.setRGB(npcTint2[id * 3], npcTint2[id * 3 + 1], npcTint2[id * 3 + 2]),
+          })
+          break
+        }
       }
+    }
+
+    let nearCount = 0, farCount = 0
+    propCounts.fill(0)
+
+    const writePersonSlot = (
+      mesh: THREE.InstancedMesh, attr: ReturnType<typeof createCrowdAttributes>,
+      slot: number, srcIdx: number, phase: number, gait: number, activePose: number, clampedLook: number,
+    ) => {
+      mesh.setMatrixAt(slot, m4)
+      const t3 = srcIdx * 3, s4 = srcIdx * 4
+      attr.tint0.setXYZ(slot, npcTint0[t3], npcTint0[t3 + 1], npcTint0[t3 + 2])
+      attr.tint1.setXYZ(slot, npcTint1[t3], npcTint1[t3 + 1], npcTint1[t3 + 2])
+      attr.tint2.setXYZ(slot, npcTint2[t3], npcTint2[t3 + 1], npcTint2[t3 + 2])
+      attr.style.setXYZW(slot, npcStyle[s4], npcStyle[s4 + 1], npcStyle[s4 + 2], npcStyle[s4 + 3])
+      attr.anim.setXYZW(slot, phase, gait, activePose, clampedLook)
+      attr.pose.setXY(slot, activePose, 1)
     }
 
     for (let i = 0; i < npcs.length; i++) {
@@ -562,12 +673,17 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
         if (n.kind === 'cross') { n.v += n.dir * n.speed * dt; if (n.v > n.max || n.v < n.min) n.dir *= -1 }
         else { n.u += n.dir * n.speed * dt; if (n.u > n.max || n.u < n.min) n.dir *= -1 }
         const ahead = n.dir * 0.8
-        const [ax, az] = n.kind === 'cross' ? F.P(n.u, n.v + ahead + n.side) : F.P(n.u + ahead, n.v + n.side)
+        const au = n.kind === 'cross' ? n.u : n.u + ahead
+        const av = n.kind === 'cross' ? n.v + ahead + n.side : n.v + n.side
+        const ax = originX + ux * au + vx * av, az = originZ + uz * au + vz * av
         if (solidMonumentAt(ax, az, simYear)) n.dir *= -1
-        ;[x, z] = F.P(n.u, n.v + n.side)
+        const pv = n.v + n.side
+        x = originX + ux * n.u + vx * pv
+        z = originZ + uz * n.u + vz * pv
         if (walking) {
-          const d = Math.hypot(x - px, z - pz)
-          const want = d < 1.6 ? (((x - px) * F.v[0] + (z - pz) * F.v[1]) >= 0 ? 1.4 : -1.4) : 0
+          const dxp = x - px, dzp = z - pz
+          const d2p = dxp * dxp + dzp * dzp
+          const want = d2p < 1.6 * 1.6 ? ((dxp * vx + dzp * vz) >= 0 ? 1.4 : -1.4) : 0
           n.side += (want - n.side) * Math.min(1, dt * 3)
         }
         yaw = (n.kind === 'cross' ? F.yawV : F.yawU) + (n.dir > 0 ? 0 : Math.PI)
@@ -581,36 +697,57 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
       } else {
         x = n.x!; z = n.z!; yaw = n.face!
       }
+      NPC_STATE.x[i] = x; NPC_STATE.z[i] = z
+
+      const rdx = x - refX, rdz = z - refZ
+      const dist2 = rdx * rdx + rdz * rdz
+      if (walking && dist2 > WALK_MAX_R2) continue
+
       let look = 0
-      if (walking) {
-        const dx = px - x, dz = pz - z, d = Math.hypot(dx, dz)
-        if (d < 5) { const angle = Math.atan2(dx, dz) - yaw; look = THREE.MathUtils.clamp(Math.atan2(Math.sin(angle), Math.cos(angle)), -1, 1) }
+      let replying = false
+      if (walking && dist2 < 25) {
+        const dx = px - x, dz = pz - z
+        const angle = Math.atan2(dx, dz) - yaw
+        look = THREE.MathUtils.clamp(Math.atan2(Math.sin(angle), Math.cos(angle)), -1, 1)
+        replying = wavingNow
       }
       n.look += (look - n.look) * Math.min(1, dt * 4)
-      const replying = walking && performance.now() < walk.waveUntil && Math.hypot(px - x, pz - z) < 5
       const activePose = replying ? POSE.wave : n.pose
       const clampedLook = THREE.MathUtils.clamp(n.look, -1, 1)
-      pAttr.anim.setXYZW(i, n.phase, gait, activePose, clampedLook)
-      pAttr.pose.setXY(i, activePose, 1)
-      NPC_STATE.x[i] = x; NPC_STATE.z[i] = z
+
       pos.set(x, surfaceY(x, z, i), z)
       q.setFromAxisAngle(up, yaw)
       one.set(n.build, n.stature, n.build)
-      const close = sim.closePeople.find(slot => slot.id === i)
-      if (close) {
-        close.citizen.root.visible = true
-        close.citizen.root.position.copy(pos); close.citizen.root.quaternion.copy(q); close.citizen.root.scale.copy(one)
-        close.citizen.update(dt, { speed: gait ? n.speed : 0, grounded: true, wave: replying, look: n.look, groundAt: footGround })
-        m4.compose(hidden, q, one)
-      } else {
-        m4.compose(pos, q, one)
+
+      let handledByClose = false
+      for (let s = 0; s < poolLen; s++) {
+        const slot = sim.closePeople[s]
+        if (slot.id === i) {
+          slot.citizen.root.visible = true
+          slot.citizen.root.position.copy(pos); slot.citizen.root.quaternion.copy(q); slot.citizen.root.scale.copy(one)
+          slot.citizen.update(dt, { speed: gait ? n.speed : 0, grounded: true, wave: replying, look: n.look, groundAt: footGround })
+          handledByClose = true
+          break
+        }
       }
-      people.setMatrixAt(i, m4)
-      if (n.prop && n.propSlot !== undefined) {
-        const pm = propMeshes[n.prop === 'amphora' ? 0 : n.prop === 'basket' ? 1 : n.prop === 'staff' ? 2 : 3]
-        pm.mesh.setMatrixAt(n.propSlot, m4)
-        pm.attr.anim.setXYZW(n.propSlot, n.phase, gait, activePose, clampedLook)
-        pm.attr.pose.setXY(n.propSlot, activePose, 1)
+      if (handledByClose) continue
+
+      m4.compose(pos, q, one)
+      if (dist2 <= NEAR_R2 && nearCount < nearPeople.instanceMatrix.count) {
+        writePersonSlot(nearPeople, nearAttr, nearCount++, i, n.phase, gait, activePose, clampedLook)
+      } else if (farCount < farPeople.instanceMatrix.count) {
+        writePersonSlot(farPeople, farAttr, farCount++, i, n.phase, gait, activePose, clampedLook)
+      }
+
+      if (n.propIdx >= 0 && (!walking || dist2 <= PROP_MAX_R2)) {
+        const pm = propMeshes[n.propIdx]
+        const ps = propCounts[n.propIdx]
+        if (ps < pm.cap) {
+          pm.mesh.setMatrixAt(ps, m4)
+          pm.attr.anim.setXYZW(ps, n.phase, gait, activePose, clampedLook)
+          pm.attr.pose.setXY(ps, activePose, 1)
+          propCounts[n.propIdx] = ps + 1
+        }
       }
     }
 
@@ -621,15 +758,35 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
     if (sim.avatar?.root.visible) {
       pos.set(walk.x, walk.feet, walk.z); q.setFromAxisAngle(up, walk.yaw + Math.PI)
       sim.avatar.root.position.copy(pos); sim.avatar.root.quaternion.copy(q)
-      sim.avatar.update(dt, { speed: walk.speed, grounded: walk.grounded, wave: performance.now() < walk.waveUntil, look: 0, groundAt: footGround })
-      m4.compose(hidden, q, one)
-      pAttr.anim.setXYZW(av, 0, walk.speed < 0.3 ? 0 : walk.speed > 4 ? 1 : 0.5, performance.now() < walk.waveUntil ? POSE.wave : POSE.walk, 0)
-    } else if (walking && walk.view === 'third') {
+      sim.avatar.update(dt, { speed: walk.speed, grounded: walk.grounded, wave: wavingNow, look: 0, groundAt: footGround })
+    } else if (walking && walk.view === 'third' && nearCount < nearPeople.instanceMatrix.count) {
       pos.set(walk.x, walk.feet, walk.z); q.setFromAxisAngle(up, walk.yaw + Math.PI)
       m4.compose(pos, q, one)
-      pAttr.anim.setXYZW(av, 0, walk.speed < 0.3 ? 0 : 0.5, 0, 0)
-    } else m4.compose(hidden, q.identity(), one)
-    people.setMatrixAt(av, m4)
+      writePersonSlot(nearPeople, nearAttr, nearCount++, av, 0, walk.speed < 0.3 ? 0 : walk.speed > 4 ? 1 : 0.5, wavingNow ? POSE.wave : POSE.walk, 0)
+    }
+
+    nearPeople.count = nearCount
+    farPeople.count = farCount
+    if (nearCount > 0) {
+      nearPeople.instanceMatrix.needsUpdate = true
+      nearAttr.tint0.needsUpdate = true; nearAttr.tint1.needsUpdate = true; nearAttr.tint2.needsUpdate = true
+      nearAttr.style.needsUpdate = true; nearAttr.anim.needsUpdate = true; nearAttr.pose.needsUpdate = true
+    }
+    if (farCount > 0) {
+      farPeople.instanceMatrix.needsUpdate = true
+      farAttr.tint0.needsUpdate = true; farAttr.tint1.needsUpdate = true; farAttr.tint2.needsUpdate = true
+      farAttr.style.needsUpdate = true; farAttr.anim.needsUpdate = true; farAttr.pose.needsUpdate = true
+    }
+    for (let pIdx = 0; pIdx < 4; pIdx++) {
+      const pm = propMeshes[pIdx]
+      const cnt = propCounts[pIdx]
+      pm.mesh.count = cnt
+      if (cnt > 0) {
+        pm.mesh.instanceMatrix.needsUpdate = true
+        pm.attr.anim.needsUpdate = true
+        pm.attr.pose.needsUpdate = true
+      }
+    }
 
     let nearestCart = -1
     let nearestDistance = 32 ** 2
@@ -637,19 +794,25 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
       horse.root.visible = false
       for (let i = 0; i < carts.length; i++) {
         const pose = cartPose(carts[i].distance, F.L)
-        const [x, z] = F.P(pose.u, pose.v)
+        const x = originX + ux * pose.u + vx * pose.v
+        const z = originZ + uz * pose.u + vz * pose.v
         const distance = (x - px) ** 2 + (z - pz) ** 2
         if (distance < nearestDistance) { nearestCart = i; nearestDistance = distance }
       }
     }
+    let horseCount = 0, cartCount = 0
     for (let i = 0; i < carts.length; i++) {
       const cr = carts[i]
       cr.distance += cr.speed * dt
       const lead = cartPose(cr.distance, F.L)
-      const [x, z] = F.P(lead.u, lead.v)
+      const x = originX + ux * lead.u + vx * lead.v
+      const z = originZ + uz * lead.u + vz * lead.v
+      const cdx = x - refX, cdz = z - refZ
+      if (walking && cdx * cdx + cdz * cdz > CART_MAX_R2) continue
       const horseY = surfaceY(x, z, npcs.length + 1 + i * 2)
       const axle = cartPose(cr.distance - 2.6, F.L)
-      const [cx, cz] = F.P(axle.u, axle.v)
+      const cx = originX + ux * axle.u + vx * axle.v
+      const cz = originZ + uz * axle.u + vz * axle.v
       const cartY = surfaceY(cx, cz, npcs.length + 2 + i * 2)
       const slopePitch = THREE.MathUtils.clamp(Math.atan2(horseY - cartY, 2.6), -0.25, 0.25)
       pos.set(x, horseY, z)
@@ -662,31 +825,38 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
         horse.root.quaternion.copy(q)
         horse.mixer.update(dt * cr.speed / 1.4)
         horse.syncHarness()
-        m4.compose(hidden, q, one)
-      } else m4.compose(pos, q, one)
-      horses.setMatrixAt(i, m4)
-      // cart trails 2.6 m behind the horse; pitch matches the street grade so shafts meet the tug loops
+      } else {
+        m4.compose(pos, q, one)
+        horses.setMatrixAt(horseCount, m4)
+        hAttr.tint0.setXYZ(horseCount, horseTints[i * 3], horseTints[i * 3 + 1], horseTints[i * 3 + 2])
+        hAttr.anim.setXYZW(horseCount, cr.phase, 0.5, 0, 0)
+        horseCount++
+      }
       q.setFromAxisAngle(up, Math.atan2(x - cx, z - cz))
       q.multiply(qPitch)
-      pos.set(cx, cartY, cz); m4.compose(pos, q, one); cartMesh.setMatrixAt(i, m4)
+      pos.set(cx, cartY, cz); m4.compose(pos, q, one)
+      cartMesh.setMatrixAt(cartCount, m4)
+      cAttr.anim.setXYZW(cartCount, cr.phase, 0.5, 0, 0)
+      cartCount++
     }
-
-    people.instanceMatrix.needsUpdate = true
-    horses.instanceMatrix.needsUpdate = true
-    cartMesh.instanceMatrix.needsUpdate = true
-    pAttr.anim.needsUpdate = true
-    pAttr.pose.needsUpdate = true
-    for (const pm of propMeshes) if (pm.carriers.length > 0) {
-      pm.mesh.instanceMatrix.needsUpdate = true
-      pm.attr.anim.needsUpdate = true
-      pm.attr.pose.needsUpdate = true
+    horses.count = horseCount
+    cartMesh.count = cartCount
+    if (horseCount > 0) {
+      horses.instanceMatrix.needsUpdate = true
+      hAttr.tint0.needsUpdate = true
+      hAttr.anim.needsUpdate = true
+    }
+    if (cartCount > 0) {
+      cartMesh.instanceMatrix.needsUpdate = true
+      cAttr.anim.needsUpdate = true
     }
   })
 
   return (
     <group visible={visible}>
-      <primitive object={sim.people} />
-      {sim.propMeshes.map((pm) => pm.carriers.length > 0 && <primitive key={pm.kind} object={pm.mesh} />)}
+      <primitive object={sim.nearPeople} />
+      <primitive object={sim.farPeople} />
+      {sim.propMeshes.map((pm) => pm.hasCarriers && <primitive key={pm.kind} object={pm.mesh} />)}
       {sim.avatar && <primitive object={sim.avatar.root} />}
       {sim.closePeople.map((slot, i) => <primitive key={i} object={slot.citizen.root} />)}
       <primitive object={sim.horses} />

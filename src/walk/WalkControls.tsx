@@ -7,7 +7,7 @@ import { killFlight, rig } from '../scene/camera'
 import { GRID_AXES, HOUSE_RECTS, STREET_SEGS } from '../scene/CityGrid'
 import { CHARACTERS } from '../content/characters'
 import { GRID } from '../content/grid'
-import { WorldProbe } from './physics'
+import { sharedWorldProbe } from './physics'
 import { sceneUniforms } from '../scene/Terrain'
 import { waterHere } from '../scene/Water'
 import { addRipple } from '../scene/water'
@@ -93,7 +93,7 @@ export function WalkControls() {
   const showGrid = useApp((s) => s.showGrid)
   const year = useApp((s) => s.year)
   const { camera, gl, scene } = useThree()
-  const probe = useMemo(() => new WorldProbe(), [])
+  const probe = sharedWorldProbe
   const houses = useRef<(x: number, z: number) => boolean>(() => false)
   const st = useRef({ bob: 0, coyote: 0, buffer: 0, dip: 0, lastTapW: 0, sprintLatch: false, stepPhase: 0, camDist: 0 })
   const active = mode === 'walk'
@@ -108,10 +108,11 @@ export function WalkControls() {
   // (re)build collision data when the city changes (city layer, era)
   useEffect(() => {
     if (!active || !terrainReady) return
+    const epoch = `${scene.uuid}:${year}:${showGrid}`
     probeReady.current = false
     const id = window.setTimeout(() => {
       houses.current = buildHouseHash()
-      probe.refresh(scene)
+      probe.refreshIfNeeded(scene, epoch)
       probeReady.current = true
       // never start inside something: spiral out to the nearest free spot
       const t = getTerrain()

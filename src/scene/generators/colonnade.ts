@@ -10,7 +10,7 @@ export interface ColonnadedStreetOptions {
 export function createColonnadedStreet(o: ColonnadedStreetOptions = {}): THREE.Group {
   const { length: l = 300, carriagewayWidth: w = 14, porticoDepth: d = 6, columnHeight: h = 6, spacing = 3.5, open } = o;
   const b = new Building('Colonnaded Street'); b.foundation(w + 2 * d, l);
-  b.box('travertine', w, 0.12, l);
+  b.box('travertine', w, 0.16, l);
   const placements: Placement[] = [], bays = Math.max(1, Math.round(l / spacing)), pitch = l / bays;
   const addTabernaDoor = (side: number, backX: number, doorZ: number, doorW: number) => {
     const inSign = -side; // inward toward the portico is -side
@@ -68,7 +68,7 @@ export function createColonnadedStreet(o: ColonnadedStreetOptions = {}): THREE.G
     }
   }
   const pavingMesh = b.repeated('travertine', new THREE.BoxGeometry(1.46, 0.08, 1.46), paving);
-  if (pavingMesh) pavingMesh.userData.noShadow = true;
+  if (pavingMesh) { pavingMesh.userData.noShadow = true; pavingMesh.userData.noCollide = true; }
   // Central axial sewer cover slabs (cloaca) with recessed drainage slots
   for (let z = -l / 2 + 1.5; z < l / 2 - 1; z += 3.0) {
     b.box('limestone', 0.78, 0.05, 1.35, 0, 0.165, z);

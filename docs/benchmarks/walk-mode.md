@@ -17,12 +17,14 @@ Character assets are generated in code: rounded limbs and head, jaw/nose/eyes/br
 
 ## Verification
 
-Run `node tests/walk-physics.test.cjs`, `node tests/terrain-grounding.test.cjs`, `node tests/character-geometry.test.cjs` , `node tests/walk-session.test.cjs` and `node tests/benchmark.test.cjs` from the project root. They cover actual Three.js raycasts, terrain/mesh agreement, geometry validity and detail bounds, depth shader injection, and benchmark reliability. Also run the production build and focused lint.
+Run `node --test tests/*.test.cjs` from the project root (covering `walk-physics`, `terrain-grounding`, `character-geometry`, `imported-citizens`, `walk-session`, `roman-route`, `landmarks-audit`, `performance-lod`, `water`, and `benchmark`), along with `npx tsc -b`, `npm run lint`, and `npm run build`.
 
-Browser sockets are blocked in this environment. Visual acceptance, shader compilation on actual GPUs, real-device performance, and keyboard/touch end-to-end checks remain outstanding. Test entry, pause, resume, map travel, information panels, new-character reset, mobile controls and focus loss on a browser before treating the full walk flow as verified.
+## Live browser route & optimization pass
 
-## Input and crowd correction pass
+Collision broad-phase and instanced raycasts (`src/walk/physics.ts`), near/far crowd LOD (`src/walk/Crowd.tsx`), shared water stone materials (`src/scene/water/pools.ts`), spatially bucketed house facade recycling (`src/scene/CityDetails.tsx`), GPU geometry/material disposal (`src/scene/CityGrid.tsx`, `src/scene/CityDetails.tsx`), and module-level walk asset caching (`cart-horse.glb`, `sheep.obj`) were verified in headless Chrome against the live dev server on `ANGLE (Intel, Mesa Intel(R) HD Graphics 620 (KBL GT2), OpenGL ES 3.2)` at fixed `1280 × 800`, `DPR = 1`:
 
-Map and settings visibility now live in application state. Movement, look input, greeting audio, and crowd simulation share the same blocking rule. Escape closes an overlay before pausing; leaving walk mode clears old overlays. Touch-look cancellation is handled explicitly. Paused crowds skip their simulation/matrix-upload loop. Collision broad-phase candidates are cached in up to 128 spatial cells, with conservative cell-edge bounds and invalidation whenever the scene is refreshed.
-
-The session and physics suites pass 12 cases in this pass, including overlay dismissal/input blocking and collision-cache refresh across distant cells. Focused lint has no errors. These checks do not replace live desktop/mobile testing or demonstrate a measured FPS improvement; local sockets remain unavailable.
+- **Initial load lazy gating:** `0` citizen/animal model requests during initial Explore load (`11.57 MB` initial dev transfer); `male.glb`, `female.glb`, `motions.glb`, `cart-horse.glb`, and `sheep.obj` fetch only on entering walk mode, with `0` extra model fetches when exiting and resuming walk mode.
+- **Roman route walk (`AD 200`, Aurelia, 3rd-person, `showGrid = true`):**
+  - Scene triangles dropped from `1,578,743` to `1,090,978` (`-30.9%`), live GPU geometries from `418` to `358`, compiled shader programs from `88` to `59`, and draw calls from `359` to `344`.
+  - Post-warmup frame timings on headless integrated Intel HD 620 (`1280 × 800`, `DPR = 1`, `3072²` shadows): `medianMs = 66.7 ms`, `p95Ms = 116.7 ms` for both `fx=0` and `fx=1` (`p95Ms` improved from `283.3 ms`). Physical Apple Silicon / discrete desktop GPUs and physical iOS/Android handsets still require on-device profiling before claiming 30/60 FPS hardware targets.
+- **Desktop & mobile touch end-to-end checks:** Verified `M` travel map open/Escape close, `Escape` pause/resume dialog, explore-to-walk session position preservation, `390 × 844` mobile virtual joystick displacement & reset, view toggle, jump trigger, and `/docs/design/fitting.html` canvas/era/role studio with `0` runtime errors.

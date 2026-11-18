@@ -198,9 +198,20 @@ export function buildWater(t: Terrain): { group: THREE.Group; volumes: WaterVolu
   const masonry = stone.finish();
   const porticoGroup = standingPortico.finish();
   const debrisGroup = fallenDebris.finish();
-  // Clone shared materials: City may patch originals; ownership remains local and disposable.
+  // Share one cloned material per key across water masonry & Sacred Pool phases: City may patch originals; ownership remains local and disposable.
+  const localMats = new Map<string, THREE.MeshStandardMaterial>();
   for (const sub of [masonry, porticoGroup, debrisGroup]) {
-    sub.traverse(o => { if (o instanceof THREE.Mesh) { o.material = (o.material as THREE.MeshStandardMaterial).clone(); if (o.name === 'travertine') o.material.color.set('#f7f5ed'); } });
+    sub.traverse(o => {
+      if (o instanceof THREE.Mesh) {
+        let m = localMats.get(o.name);
+        if (!m) {
+          m = (o.material as THREE.MeshStandardMaterial).clone();
+          if (o.name === 'travertine') m.color.set('#f7f5ed');
+          localMats.set(o.name, m);
+        }
+        o.material = m;
+      }
+    });
   }
   porticoGroup.visible = false;
   group.add(masonry, porticoGroup, debrisGroup);

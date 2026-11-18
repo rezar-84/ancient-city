@@ -27,11 +27,14 @@ export default function Water({ terrain }: { terrain: Terrain }) {
     return () => {
       WATER_VOLUMES = []
       sceneUniforms.uHole.value.set(0, 0, 0, 0)
+      const disposedMats = new Set<THREE.Material>()
       built.group.traverse((o) => {
         const m = o as THREE.Mesh
         if (!m.isMesh) return
         m.geometry.dispose()
-        for (const mat of Array.isArray(m.material) ? m.material : [m.material]) mat.dispose()
+        for (const mat of Array.isArray(m.material) ? m.material : [m.material]) {
+          if (!disposedMats.has(mat)) { disposedMats.add(mat); mat.dispose() }
+        }
       })
     }
   }, [built])
