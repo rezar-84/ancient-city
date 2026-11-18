@@ -240,6 +240,7 @@ export function City({ terrain }: { terrain: Terrain }) {
       let baseY = l.builderOpts?.sink !== undefined
         ? terrain.heightAt(x, z) - Number(l.builderOpts.sink)
         : groundUnder(terrain, x, z, r)
+      if (l.builder === 'frontinusGate' || l.builder === 'byzantineGate') baseY = terrain.heightAt(x, z)
       if (l.builder === 'latrine') {
         // Place the walkable entrance at local +Z on the terrain at the
         // threshold. The lowest corner of this long plot is downhill.
@@ -277,10 +278,22 @@ export function City({ terrain }: { terrain: Terrain }) {
             return MONUMENT_FOOTPRINTS.some((f) => f.contains(wx, wz, 0.8))
           }
           const g = createColonnadedStreet({ length: len / parts + 0.5, open })
-          g.position.set(cx, terrain.heightAt(cx, cz) - 0.3, cz)
-          g.rotation.y = ry
+          // Match the height of both road ends. A level foundation at the
+          // midpoint presents a vertical face across the gateway on a slope.
+          const y0 = terrain.heightAt(ax + (bx - ax) * t0, az + (bz - az) * t0)
+          const y1 = terrain.heightAt(ax + (bx - ax) * t1, az + (bz - az) * t1)
+          const grade = (y1 - y0) / (len / parts)
+          const incline = new THREE.Matrix4().set(
+            1, 0, 0, 0, 0, 1, grade, 0, 0, 0, 1, 0, 0, 0, 0, 1)
+          // Put the slope on a child so plan-mode scaling still acts on the whole section.
+          const section = new THREE.Group()
+          g.matrix.copy(incline)
+          g.matrixAutoUpdate = false
+          section.add(g)
+          section.position.set(cx, (y0 + y1) / 2 - 0.3, cz)
+          section.rotation.y = ry
           shadowAll(g)
-          out.push({ obj: g, built: st.built ?? 80, until: st.until, flatten: true })
+          out.push({ obj: section, built: st.built ?? 80, until: st.until, flatten: true })
         }
       }
     }
