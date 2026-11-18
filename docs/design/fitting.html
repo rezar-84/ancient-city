@@ -1,4 +1,14 @@
-<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Roman tunic fitting</title>
-<style>body{margin:0;background:#e2ddd2;color:#26241f;font:16px system-ui}header{position:absolute;background:#fffefaed;padding:.8rem;display:flex;gap:.7rem;flex-wrap:wrap}canvas{display:block}label{display:flex;gap:.3rem}</style>
-<header><label>Figure <select id="figure"><option value="f">Female</option><option value="m">Male</option></select></label><label>Cut <select id="cut"><option value="work">Work tunic</option><option value="full">Full tunic</option></select></label><label>Motion <select id="speed"><option value="0">Stand</option><option value="1.4">Walk</option><option value="4.5">Jog</option></select></label><span>Drag to orbit</span><output id="status">Loading figures…</output></header>
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Hierapolis · Historical Garment &amp; Role Fitting</title>
+<style>body{margin:0;background:#e2ddd2;color:#26241f;font:15px system-ui}header{position:absolute;z-index:2;background:#fffefaed;padding:.75rem .9rem;display:flex;gap:.65rem;flex-wrap:wrap;align-items:center;border-bottom:1px solid #c9bfae}canvas{display:block}label{display:flex;gap:.3rem;align-items:center}button{padding:.2rem .55rem;border:1px solid #8c7c66;background:#f7f2e6;border-radius:4px;cursor:pointer}</style>
+<header>
+  <label>Era <select id="era"><option value="greek">Hellenistic 150 BC</option><option value="roman" selected>Roman AD 200</option><option value="byzantine">Byzantine AD 500</option></select></label>
+  <label>Figure <select id="figure"><option value="m">Male</option><option value="f">Female</option></select></label>
+  <label>Role <select id="role"><option value="merchant" selected>Merchant</option><option value="porter">Porter</option><option value="soldier">Soldier</option><option value="resident">Resident</option><option value="pilgrim">Pilgrim</option><option value="priest">Priest / Monk</option></select></label>
+  <label>Cut <select id="cut"><option value="work">A · Work tunic</option><option value="full">B · Full drape</option></select></label>
+  <label>Fabric <select id="fabric"><option value="linen">Linen (280–320 gsm)</option><option value="wool">Wool (400 gsm)</option></select></label>
+  <label>Body <select id="body"><option value="adult">Adult (1.75 m)</option><option value="short">Short (1.62 m)</option><option value="tall">Tall (1.84 m)</option><option value="older">Older / stocky</option><option value="lean">Young / lean</option></select></label>
+  <label>Motion <select id="speed"><option value="0">Stand</option><option value="1.4" selected>Walk</option><option value="4.5">Jog</option><option value="bend">Work bend</option></select></label>
+  <span>View: <button type="button" data-cam="rear">Rear</button> <button type="button" data-cam="side">Side</button> <button type="button" data-cam="front">3/4 Front</button></span>
+  <output id="status">Loading figures…</output>
+</header>
 <script type="module" src="./fitting.ts"></script></html>

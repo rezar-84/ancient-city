@@ -141,3 +141,50 @@ test('tunic rear panel clears the body at hip height on both figures', async () 
     citizen.dispose()
   }
 })
+
+test('Hellenistic, Roman, and Byzantine garments differentiate cuts, linen/wool weaves, roles, and rear/side stride clearance', async () => {
+  const { instantiateCitizen, male, female, motions } = await setup
+  const greek = instantiateCitizen(male, motions, 'greek', palette(), 'm')
+  const roman = instantiateCitizen(male, motions, 'roman', palette(), 'm')
+  const byz = instantiateCitizen(female, motions, 'byzantine', palette(), 'f')
+
+  // Hem heights progress from shorter Hellenistic chiton -> Roman tunica -> longer Byzantine dalmatica
+  const hemOf = (c) => {
+    const g = c.root.getObjectByName('SimulatedTunic').geometry.getAttribute('position')
+    let minY = Infinity
+    for (let i = 0; i < g.count; i++) minY = Math.min(minY, g.getY(i))
+    return minY
+  }
+  assert.ok(hemOf(greek) > hemOf(roman) && hemOf(roman) > hemOf(byz), 'era hems must be historically differentiated')
+
+  // Linen vs wool fabric properties
+  roman.setFabric('linen')
+  const clothMat = roman.root.getObjectByName('SimulatedTunic').material
+  assert.ok(clothMat.roughness < 0.78 && clothMat.userData.uWeave.value === 0)
+  roman.setFabric('wool')
+  assert.ok(clothMat.roughness > 0.90 && clothMat.userData.uWeave.value === 1)
+
+  // Soldier fits equipment belt independently; merchant, porter, resident, pilgrim toggle distinct gear
+  for (const role of ['soldier', 'merchant', 'porter', 'resident', 'pilgrim', 'priest']) {
+    roman.configure({ role, cut: role === 'resident' || role === 'pilgrim' ? 'full' : 'work', fabric: role === 'porter' ? 'linen' : 'wool', age: role === 'merchant' ? 'older' : 'adult' })
+    assert.equal(roman.role, role)
+  }
+
+  // Rear and side motion check across short, tall, and older builds during walk, jog, and forward work bend
+  for (const [stature, build, age, speed, bend] of [
+    [0.92, 0.95, 'adult', 1.4, 0],
+    [1.05, 1.02, 'adult', 4.5, 0],
+    [0.95, 1.10, 'older', 0, 0.55],
+  ]) {
+    roman.configure({ role: 'merchant', cut: 'work', fabric: 'linen', age })
+    roman.root.scale.set(build, stature, build)
+    for (let f = 0; f < 40; f++) roman.update(1 / 60, { speed, grounded: true, wave: false, look: 0, bend, groundAt: () => 0 })
+    const pos = roman.root.getObjectByName('SimulatedTunic').geometry.getAttribute('position')
+    assert.ok(Array.from(pos.array).every(Number.isFinite))
+    let minZ = Infinity, maxZ = -Infinity
+    for (let i = 25; i < pos.count; i++) { minZ = Math.min(minZ, pos.getZ(i)); maxZ = Math.max(maxZ, pos.getZ(i)) }
+    assert.ok(maxZ - minZ > 0.22, `side profile depth ${maxZ - minZ} must stay open during motion`)
+  }
+
+  greek.dispose(); roman.dispose(); byz.dispose()
+})

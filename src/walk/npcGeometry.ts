@@ -69,25 +69,51 @@ export function createPersonGeometry(variant: Era, lod: PersonLOD = 'near'): THR
     f.add(new THREE.CylinderGeometry(0.073, 0.047, 0.76, near ? 7 : 4, 2).translate(x, 0.46, 0), 1, leg, hip);
     f.box([0.115, 0.045, 0.235], [x, 0.0225, 0.055], 3, leg, hip, 1, 0.42);
     if (near) f.box([0.119, 0.025, 0.045], [x, 0.065, 0.08], 3, leg, hip);
-    f.add(new THREE.CylinderGeometry(0.071, 0.052, 0.26, near ? 7 : 4).translate(side * 0.235, 1.26, 0), 0, arm, shoulder);
-    f.add(new THREE.CylinderGeometry(0.049, 0.032, 0.27, near ? 7 : 4).translate(side * 0.245, 0.995, 0.015), 1, arm, shoulder);
+    // Era-differentiated sleeves: sleeveless pinned Greek chiton, short-sleeved Roman tunica, long-sleeved Byzantine dalmatica
+    const upperSleevePart = variant === 'greek' ? 1 : 0;
+    const lowerSleevePart = variant === 'byzantine' ? 0 : 1;
+    const lowerR0 = variant === 'byzantine' ? 0.055 : 0.049;
+    const lowerR1 = variant === 'byzantine' ? 0.040 : 0.032;
+    f.add(new THREE.CylinderGeometry(0.071, 0.052, 0.26, near ? 7 : 4).translate(side * 0.235, 1.26, 0), upperSleevePart, arm, shoulder);
+    f.add(new THREE.CylinderGeometry(lowerR0, lowerR1, 0.27, near ? 7 : 4).translate(side * 0.245, 0.995, 0.015), lowerSleevePart, arm, shoulder);
+    if (near && variant === 'byzantine') {
+      f.add(new THREE.CylinderGeometry(0.043, 0.042, 0.032, 6, 1, true).translate(side * 0.245, 0.875, 0.018), 3, arm, shoulder);
+    }
+    if (near && variant === 'greek') {
+      f.box([0.036, 0.022, 0.05], [side * 0.175, 1.385, 0], 3);
+    }
     oval([0.038, 0.065, 0.029], [side * 0.245, 0.825, 0.02], 1, arm, shoulder);
   }
-  // One continuous elliptical garment avoids the old two-cylinder skirt silhouette.
-  const bottom = variant === 'greek' ? 0.52 : variant === 'roman' ? 0.38 : 0.14;
-  const garment = new THREE.CylinderGeometry(0.20, 0.29, 1.39 - bottom, n * 2, near ? 5 : 1, true);
+  // Era-differentiated garment silhouette: snug contoured waist, kolpos blousing above belt, and rear seat ease below belt.
+  const bottom = variant === 'greek' ? 0.50 : variant === 'roman' ? 0.36 : 0.14;
+  const kolposGain = variant === 'greek' ? 0.095 : variant === 'roman' ? 0.055 : 0.025;
+  const foldFreq = variant === 'greek' ? 12 : variant === 'roman' ? 10 : 8;
+  const garment = new THREE.CylinderGeometry(0.20, 0.285, 1.39 - bottom, n * 2, near ? 5 : 2, true);
   const gp = garment.getAttribute('position');
   for (let i = 0; i < gp.count; i++) {
-    const y = gp.getY(i) + (1.39 + bottom) / 2, angle = Math.atan2(gp.getZ(i), gp.getX(i));
-    const waist = 1 - 0.24 * Math.exp(-(((y - 0.94) / 0.17) ** 2));
-    const fold = 1 + (near ? 0.065 : 0.035) * Math.cos(angle * 10 + y * 0.9);
-    gp.setXYZ(i, gp.getX(i) * waist * fold, y, gp.getZ(i) * waist * fold * 0.64);
+    const rawX = gp.getX(i), rawZ = gp.getZ(i);
+    const y = gp.getY(i) + (1.39 + bottom) / 2, angle = Math.atan2(rawZ, rawX);
+    const waist = 1 - 0.26 * Math.exp(-(((y - 0.94) / 0.15) ** 2)) + kolposGain * Math.exp(-(((y - 1.01) / 0.055) ** 2));
+    const below = THREE.MathUtils.clamp((0.94 - y) / Math.max(0.1, 0.94 - bottom), 0, 1);
+    const fold = 1 + (near ? 0.068 : 0.036) * (0.4 + 0.6 * below) * Math.cos(angle * foldFreq + y * 0.7);
+    const rearSeat = rawZ < 0 ? -0.028 * Math.sin(Math.min(1, below * 1.45) * Math.PI * 0.85) * (-rawZ / Math.max(0.05, Math.hypot(rawX, rawZ))) : 0;
+    gp.setXYZ(i, rawX * waist * fold, y, rawZ * waist * fold * 0.66 + rearSeat);
   }
   garment.computeVertexNormals(); f.add(garment);
-  f.add(new THREE.CylinderGeometry(0.19, 0.19, 0.035, n, 1, true).scale(1, 1, 0.69).translate(0, 0.94, 0), 3);
-  // Diagonal mantle folds: himation / toga-palla / long Byzantine mantle.
+  // Waist belt / cord cinch + era-specific woven hem border (Greek meander / Byzantine tapestry band) or Roman clavi
+  const beltH = variant === 'roman' ? 0.028 : 0.038;
+  f.add(new THREE.CylinderGeometry(0.188, 0.188, beltH, n, 1, true).scale(1, 1, 0.70).translate(0, 0.94, -0.004), 3);
+  if (near && variant !== 'roman') {
+    f.add(new THREE.CylinderGeometry(0.284, 0.288, 0.042, n, 1, true).scale(1, 1, 0.68).translate(0, bottom + 0.024, -0.012), 3);
+  }
+  if (near && (variant === 'roman' || variant === 'byzantine')) {
+    for (const s of [-1, 1]) {
+      f.box([0.024, 0.42, 0.265], [s * 0.088, 1.16, -0.004], 3);
+    }
+  }
+  // Diagonal mantle folds: Greek himation / Roman pallium / long Byzantine mantle.
   if (near) {
-    const drape = new THREE.CylinderGeometry(0.221, 0.25, variant === 'byzantine' ? 0.9 : 0.60, 12, 3, true, 0.15, Math.PI * 1.5);
+    const drape = new THREE.CylinderGeometry(0.221, 0.25, variant === 'byzantine' ? 0.88 : variant === 'greek' ? 0.66 : 0.58, 12, 3, true, 0.15, Math.PI * 1.5);
     const dp = drape.getAttribute('position');
     for (let i = 0; i < dp.count; i++) dp.setY(i, dp.getY(i) + 0.15 * Math.sin(Math.atan2(dp.getZ(i), dp.getX(i))));
     drape.scale(1, 1, 0.76).translate(0, 1.08, -0.012); drape.computeVertexNormals(); f.add(drape, 3);
@@ -416,10 +442,11 @@ float hairStyle = mod(floor(iStyle.w+0.01),5.);
 bool hideHair = (aWheel == 1. && hairStyle > 2.) || (aWheel == 2. && hairStyle != 2.) || (aWheel == 3. && hairStyle != 3.) || (aWheel == 4. && iStyle.w < 5.);
 if (hideHair) transformed = aPivot;
 if (aWheel == 1. && hairStyle == 1.) transformed += normal * (0.006 + 0.004*sin(position.x*240.)*sin(position.z*240.));
-// Smooth, small hem displacement; torso stays anchored at the belt.
+// Smooth side & rear hem displacement following stride phase; torso stays anchored at the belt.
 if (aLimb == 0. && aPart < 0.5) {
   float hem = clamp((0.94-position.y)/0.7,0.,1.);
   transformed.x += sin(npcPhase+position.z*12.)*npcSpeed*0.025*hem*hem;
+  transformed.z += sin(npcPhase)*clamp(position.x*6.,-1.,1.)*npcSpeed*0.075*hem - npcSpeed*0.032*hem*hem;
   // Fold the front garment over seated thighs instead of leaving it through the seat.
   float sitting = mix(iPose.x == POSE_sit ? 1. : 0., iAnim.z == POSE_sit ? 1. : 0., blend);
   transformed = mix(transformed, npcX(-1.5707963)*(transformed-vec3(0.,0.86,0.))+vec3(0.,0.86,0.), sitting*clamp((0.94-position.y)/0.12,0.,1.));

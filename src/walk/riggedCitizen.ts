@@ -3,10 +3,28 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { clone } from 'three/examples/jsm/utils/SkeletonUtils.js'
 
-type Era = 'greek' | 'roman' | 'byzantine'
-type Gender = 'm' | 'f'
-type Palette = { cloth: THREE.Color; skin: THREE.Color; accent: THREE.Color }
-export interface CitizenMotion { speed: number; grounded: boolean; wave: boolean; look: number; groundAt?: (x: number, z: number) => number }
+export type Era = 'greek' | 'roman' | 'byzantine'
+export type Gender = 'm' | 'f'
+export type GarmentCut = 'work' | 'full'
+export type FabricKind = 'linen' | 'wool'
+export type CitizenRole = 'resident' | 'merchant' | 'porter' | 'soldier' | 'pilgrim' | 'priest'
+export type AgeGroup = 'young' | 'adult' | 'older'
+export type Palette = { cloth: THREE.Color; skin: THREE.Color; accent: THREE.Color }
+export interface CitizenMotion {
+  speed: number
+  grounded: boolean
+  wave: boolean
+  look: number
+  bend?: number
+  groundAt?: (x: number, z: number) => number
+}
+export interface CitizenConfig {
+  cut?: GarmentCut
+  fabric?: FabricKind
+  role?: CitizenRole
+  age?: AgeGroup
+}
+
 type Assets = { m: GLTF; f: GLTF; motions: GLTF }
 let assets: Assets | null = null
 let pending: Promise<void> | null = null
@@ -20,6 +38,35 @@ export function loadCitizenAssets() {
       .catch(error => { pending = null; throw error })
   }
   return pending
+}
+
+/** Procedural warp/weft linen slubbing vs diagonal fulled wool twill without extra texture fetches. */
+function patchGarmentMaterial(mat: THREE.MeshStandardMaterial, uWeave: { value: number }) {
+  mat.userData.uWeave = uWeave
+  mat.customProgramCacheKey = () => 'citizen-garment-v2'
+  mat.onBeforeCompile = (sh) => {
+    sh.uniforms.uWeave = uWeave
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vGarmentLocal;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGarmentLocal = position;')
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#include <common>
+uniform float uWeave;
+varying vec3 vGarmentLocal;
+float gHash(vec2 p) { p = fract(p * vec2(127.1, 311.7)); p += dot(p, p + 34.23); return fract(p.x * p.y); }`)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+{
+  // uWeave = 0 -> crisp slubbed flax linen; uWeave = 1 -> soft diagonal combed Anatolian wool
+  vec2 uv = vec2(atan(vGarmentLocal.z, vGarmentLocal.x) * 28.0, vGarmentLocal.y * 95.0);
+  float warp = sin(uv.x * 6.28318) * 0.5 + 0.5;
+  float weft = sin(uv.y * 6.28318 + gHash(floor(uv)) * 1.4) * 0.5 + 0.5;
+  float linen = (warp * 0.55 + weft * 0.45 - 0.5) * 0.085;
+  float twill = (sin((uv.x + uv.y) * 4.2) * 0.5) * 0.055;
+  float grain = mix(linen, twill, uWeave);
+  diffuseColor.rgb *= 1.0 + grain;
+}`)
+  }
+  mat.needsUpdate = true
 }
 
 interface BindPose { rotation?: number[]; translation?: number[] }
@@ -53,16 +100,33 @@ export function retargetCitizenClip(clip: THREE.AnimationClip, target: THREE.Obj
   return new THREE.AnimationClip(clip.name, clip.duration, tracks)
 }
 
-/** Build an opaque tunic shell from body skinning plus a separately weighted skirt. */
-function makeOutfit(body: THREE.SkinnedMesh, era: Era, palette: Palette) {
+function makeRigidSkinned(geometry: THREE.BufferGeometry, boneIndex: number, skeleton: THREE.Skeleton, bindMatrix: THREE.Matrix4, material: THREE.Material) {
+  const g = geometry.index ? geometry.toNonIndexed() : geometry
+  const n = g.getAttribute('position').count
+  const si = new Uint16Array(n * 4), sw = new Float32Array(n * 4)
+  for (let i = 0; i < n; i++) { si[i * 4] = Math.max(0, boneIndex); sw[i * 4] = 1 }
+  g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4))
+  g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(sw, 4))
+  g.computeVertexNormals()
+  const mesh = new THREE.SkinnedMesh(g, material)
+  mesh.bind(skeleton, bindMatrix)
+  mesh.castShadow = mesh.receiveShadow = true
+  mesh.frustumCulled = false
+  return mesh
+}
+
+/** Build era-differentiated bodice, simulated pleated skirt with rear seat ease, waist belt, clavi/hem trims, and role gear. */
+function makeOutfit(body: THREE.SkinnedMesh, era: Era, palette: Palette, gender: Gender) {
   const source = body.geometry.index ? body.geometry.toNonIndexed() : body.geometry.clone()
   const position = source.getAttribute('position')
   source.computeBoundingBox(); const height = source.boundingBox!.max.y
+  // Era-differentiated sleeve reach: sleeveless/pinned Hellenistic chiton, short-sleeved Roman tunica, long-sleeved Byzantine dalmatica
+  const sleeveSpan = era === 'greek' ? height * 0.205 : era === 'roman' ? height * 0.275 : height * 0.345
   const keep: number[] = []
   for (let i = 0; i < position.count; i += 3) {
     const y = (position.getY(i) + position.getY(i + 1) + position.getY(i + 2)) / 3
     const x = Math.max(Math.abs(position.getX(i)), Math.abs(position.getX(i + 1)), Math.abs(position.getX(i + 2)))
-    if (y > height * 0.45 && y < height * 0.84 && x < height * 0.27) keep.push(i, i + 1, i + 2)
+    if (y > height * 0.45 && y < height * 0.845 && x < sleeveSpan) keep.push(i, i + 1, i + 2)
   }
   const top = new THREE.BufferGeometry()
   for (const key of ['position', 'normal', 'skinIndex', 'skinWeight']) {
@@ -72,9 +136,25 @@ function makeOutfit(body: THREE.SkinnedMesh, era: Era, palette: Palette) {
     top.setAttribute(key, key === 'skinIndex' ? new THREE.Uint16BufferAttribute(values, count) : new THREE.Float32BufferAttribute(values, count))
   }
   const p = top.getAttribute('position'), normals = top.getAttribute('normal')
-  for (let i = 0; i < p.count; i++) p.setXYZ(i, p.getX(i) + normals.getX(i) * 0.018, p.getY(i) + normals.getY(i) * 0.018, p.getZ(i) + normals.getZ(i) * 0.018)
-  // Sample the actual waist of this body in bind space. Its front and back
-  // are asymmetric, so centre the belt on the sampled section.
+  const topColors = new Float32Array(p.count * 3).fill(1)
+  // Bloused kolpos overhang just above the belt (strongest in Greek chiton & Roman belted work tunic, tailored in Byzantine dalmatica)
+  const kolposAmp = era === 'greek' ? 0.022 : era === 'roman' ? 0.015 : 0.008
+  for (let i = 0; i < p.count; i++) {
+    const py = p.getY(i), px = p.getX(i)
+    const kolpos = kolposAmp * Math.exp(-(((py / height - 0.635) / 0.032) ** 2))
+    const shell = 0.018 + kolpos
+    p.setXYZ(i, px + normals.getX(i) * shell, py - kolpos * 0.35 + normals.getY(i) * 0.018, p.getZ(i) + normals.getZ(i) * shell)
+    // Vertical clavi stripes on Roman & Byzantine tunics; shoulder fibula bands on Greek chiton
+    const clavus = (era === 'roman' || era === 'byzantine') && Math.abs(Math.abs(px) - height * 0.058) < height * 0.011 && py > height * 0.56
+    const cuff = era === 'byzantine' && Math.abs(px) > height * 0.28
+    if (clavus || cuff) {
+      topColors[i * 3] = 0.62; topColors[i * 3 + 1] = 0.42; topColors[i * 3 + 2] = 0.48
+    }
+  }
+  top.setAttribute('color', new THREE.Float32BufferAttribute(topColors, 3))
+  top.computeVertexNormals()
+
+  // Sample the actual waist of this body in bind space (front and back are asymmetric).
   let halfWidth = 0, back = Infinity, front = -Infinity
   for (let i = 0; i < position.count; i++) {
     if (Math.abs(position.getY(i) / height - 0.61) > 0.025) continue
@@ -82,56 +162,219 @@ function makeOutfit(body: THREE.SkinnedMesh, era: Era, palette: Palette) {
     back = Math.min(back, position.getZ(i))
     front = Math.max(front, position.getZ(i))
   }
-  const waistX = halfWidth + 0.025
-  const waistZ = (front - back) / 2 + 0.025
+  const waistX = halfWidth + 0.024
+  const waistZ = (front - back) / 2 + 0.024
   const centerZ = (front + back) / 2
   const hem = era === 'greek' ? 0.35 : era === 'roman' ? 0.31 : 0.18
-  // The original narrow, flattened tube cut through the hips and exposed the
-  // back of the body when a thigh moved. Give the waist an overlap with the
-  // fitted bodice and leave room around the seat and both moving legs.
-  const skirt = new THREE.CylinderGeometry(height * 0.15, height * 0.23, height * (0.61 - hem), 24, 5, true)
+  const foldCount = era === 'greek' ? 14 : era === 'roman' ? 12 : 10
+  const foldAmp = era === 'greek' ? 0.032 : era === 'roman' ? 0.028 : 0.022
+  // Snug contoured waist opening smoothly into generous seat & stride volume below the belt.
+  const skirt = new THREE.CylinderGeometry(height * 0.15, height * 0.232, height * (0.61 - hem), 24, 5, true)
     .translate(0, height * (0.61 + hem) / 2, 0)
   const sp = skirt.getAttribute('position'), si = new Uint16Array(sp.count * 4), sw = new Float32Array(sp.count * 4)
+  const skirtColors = new Float32Array(sp.count * 3).fill(1)
   const pelvis = body.skeleton.bones.findIndex(b => b.name === 'pelvis')
+  const spine1 = body.skeleton.bones.findIndex(b => b.name === 'spine_01')
+  const spine2 = body.skeleton.bones.findIndex(b => b.name === 'spine_02')
+  const headIdx = body.skeleton.bones.findIndex(b => b.name === 'Head')
+  const armL = body.skeleton.bones.findIndex(b => b.name === 'lowerarm_l')
+  const handR = body.skeleton.bones.findIndex(b => b.name === 'hand_r')
   const left = body.skeleton.bones.findIndex(b => b.name === 'thigh_l'), right = body.skeleton.bones.findIndex(b => b.name === 'thigh_r')
   for (let i = 0; i < sp.count; i++) {
-    const x = sp.getX(i), y = sp.getY(i), z = sp.getZ(i), fold = 1 + Math.cos(Math.atan2(z, x) * 12) * 0.025
-    const waist = THREE.MathUtils.smoothstep(y / height, 0.51, 0.61)
+    const x = sp.getX(i), y = sp.getY(i), z = sp.getZ(i)
     const angle = Math.atan2(z, x)
-    sp.setXYZ(i,
-      THREE.MathUtils.lerp(x * fold, waistX * Math.cos(angle), waist),
-      y,
-      THREE.MathUtils.lerp(z * fold * 0.96, centerZ + waistZ * Math.sin(angle), waist))
+    const belowBelt = THREE.MathUtils.clamp((height * 0.61 - y) / Math.max(0.01, height * (0.61 - hem)), 0, 1)
+    const fold = 1 + Math.cos(angle * foldCount) * foldAmp * (0.35 + 0.65 * belowBelt)
+    const waist = THREE.MathUtils.smoothstep(y / height, 0.51, 0.61)
+    // Extra rear pleat ease stored behind the belt so bending or striding never pulls taut across the seat
+    const rearEase = z < 0 ? -0.026 * Math.sin(Math.min(1, belowBelt * 1.4) * Math.PI * 0.85) * (-z / Math.max(0.04, Math.hypot(x, z))) : 0
+    const sx = THREE.MathUtils.lerp(x * fold, waistX * Math.cos(angle), waist)
+    const sz = THREE.MathUtils.lerp(z * fold * 0.97 + rearEase, centerZ + waistZ * Math.sin(angle), waist)
+    sp.setXYZ(i, sx, y, sz)
+    // Woven border band along the hem (Greek meander / Byzantine segmenta) and vertical clavi
+    const nearHem = belowBelt > 0.88
+    const onClavus = (era === 'roman' || era === 'byzantine') && Math.abs(Math.abs(sx) - height * 0.058) < height * 0.012
+    if ((nearHem && era !== 'roman') || onClavus) {
+      skirtColors[i * 3] = 0.64; skirtColors[i * 3 + 1] = 0.44; skirtColors[i * 3 + 2] = 0.48
+    }
     const leg = THREE.MathUtils.clamp((height * 0.61 - y) / height, 0, 0.24)
-    // Blend across the centre so adjacent skirt vertices cannot split along a leg seam.
     const blend = THREE.MathUtils.smoothstep(x, -height * 0.12, height * 0.12)
     si[i * 4] = pelvis; si[i * 4 + 1] = left; si[i * 4 + 2] = right
     sw[i * 4] = 1 - leg; sw[i * 4 + 1] = leg * blend; sw[i * 4 + 2] = leg * (1 - blend)
   }
-  skirt.computeVertexNormals(); skirt.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4)); skirt.setAttribute('skinWeight', new THREE.Float32BufferAttribute(sw, 4))
+  skirt.setAttribute('color', new THREE.Float32BufferAttribute(skirtColors, 3))
+  skirt.computeVertexNormals()
+  skirt.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4))
+  skirt.setAttribute('skinWeight', new THREE.Float32BufferAttribute(sw, 4))
   source.dispose()
-  const cloth = new THREE.MeshStandardMaterial({ color: palette.cloth, roughness: 0.88, side: THREE.DoubleSide })
-  const trim = new THREE.MeshStandardMaterial({ color: palette.accent, roughness: 0.85, side: THREE.DoubleSide })
-  const belt = new THREE.CylinderGeometry(1, 1, 0.042, 24, 1, true).scale(waistX + 0.006, 1, waistZ + 0.006).translate(0, height * 0.61, centerZ)
+
+  const uWeave = { value: era === 'roman' ? 0 : 0.6 }
+  const cloth = new THREE.MeshStandardMaterial({ color: palette.cloth, roughness: 0.78, vertexColors: true, side: THREE.DoubleSide })
+  patchGarmentMaterial(cloth, uWeave)
+  const trim = new THREE.MeshStandardMaterial({ color: palette.accent, roughness: 0.86, side: THREE.DoubleSide })
+  const leatherMat = new THREE.MeshStandardMaterial({ color: '#5b3926', roughness: 0.76, side: THREE.DoubleSide })
+  const metalMat = new THREE.MeshStandardMaterial({ color: era === 'byzantine' ? '#9e8858' : '#b78d4a', metalness: 0.58, roughness: 0.38, side: THREE.DoubleSide })
+  const woodMat = new THREE.MeshStandardMaterial({ color: '#7a593a', roughness: 0.88 })
+
+  // Fitted tunic waist cinch / calfskin cord belt with knot/buckle
+  const beltH = era === 'roman' ? 0.028 : 0.038
+  const belt = new THREE.CylinderGeometry(1, 1, beltH, 24, 1, true)
+    .scale(waistX + 0.005, 1, waistZ + 0.005)
+    .translate(0, height * 0.61, centerZ)
   const bi = new Uint16Array(belt.getAttribute('position').count * 4), bw = new Float32Array(bi.length)
   for (let i = 0; i < bi.length; i += 4) { bi[i] = pelvis; bw[i] = 1 }
-  belt.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(bi, 4)); belt.setAttribute('skinWeight', new THREE.Float32BufferAttribute(bw, 4))
-  return [top, skirt, belt].map((geometry, i) => {
+  belt.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(bi, 4))
+  belt.setAttribute('skinWeight', new THREE.Float32BufferAttribute(bw, 4))
+
+  const baseMeshes = [top, skirt, belt].map((geometry, i) => {
     const mesh = new THREE.SkinnedMesh(geometry, i === 2 ? trim : cloth)
     mesh.bind(body.skeleton, body.bindMatrix); mesh.castShadow = mesh.receiveShadow = true; mesh.frustumCulled = false
     return mesh
   })
+
+  // Role-specific historical garments & equipment (created once per pooled citizen, toggled cleanly via visibility)
+  const mantleGeo = new THREE.CylinderGeometry(waistX * 1.12, waistX * 1.32, height * (era === 'byzantine' ? 0.44 : 0.36), 18, 2, true, 0.2, Math.PI * 1.48)
+  const mp = mantleGeo.getAttribute('position')
+  for (let i = 0; i < mp.count; i++) mp.setY(i, mp.getY(i) + height * 0.075 * Math.sin(Math.atan2(mp.getZ(i), mp.getX(i))))
+  mantleGeo.scale(1, 1, (waistZ / waistX) * 1.08).translate(0, height * 0.68, centerZ)
+  const mantle = makeRigidSkinned(mantleGeo, spine2 >= 0 ? spine2 : pelvis, body.skeleton, body.bindMatrix, trim)
+
+  // Hooded travel cape (paenula / birrus) for merchants & pilgrims + maphorion veil for Byzantine women
+  const capeGeo = new THREE.ConeGeometry(waistX * 1.45, height * 0.26, 16, 1, true)
+    .scale(1, 1, 0.82)
+    .translate(0, height * 0.76, centerZ - 0.01)
+  const cape = makeRigidSkinned(capeGeo, spine2 >= 0 ? spine2 : pelvis, body.skeleton, body.bindMatrix, trim)
+
+  const veilGeo = new THREE.SphereGeometry(height * 0.082, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.72)
+    .scale(1, 1.28, 1.08)
+    .translate(0, height * 0.90, centerZ - 0.015)
+  const veil = makeRigidSkinned(veilGeo, headIdx >= 0 ? headIdx : spine2, body.skeleton, body.bindMatrix, gender === 'f' && era === 'byzantine' ? trim : cloth)
+
+  // Soldier: scale/lamellar cuirass + INDEPENDENT military equipment belt (cingulum militare with pteruges) + helmet + spear + Byzantine/Greek shield
+  const cuirassGeo = new THREE.CylinderGeometry(waistX * 1.14, waistX * 1.06, height * 0.23, 18, 1, true)
+    .scale(1, 1, (waistZ / waistX) * 1.06)
+    .translate(0, height * 0.725, centerZ)
+  const cuirass = makeRigidSkinned(cuirassGeo, spine2 >= 0 ? spine2 : pelvis, body.skeleton, body.bindMatrix, metalMat)
+
+  // Independent military equipment belt fitted over hip crest (0.565 * height) with hanging pteruges apron strips
+  const cingulumParts: THREE.BufferGeometry[] = [
+    new THREE.CylinderGeometry(1, 1, 0.046, 20, 1, true)
+      .scale(waistX * 1.11, 1, waistZ * 1.12)
+      .rotateX(0.05)
+      .translate(0, height * 0.568, centerZ + 0.004),
+  ]
+  for (let s = -2; s <= 2; s++) {
+    cingulumParts.push(new THREE.BoxGeometry(0.024, height * 0.11, 0.012).translate(s * 0.032, height * 0.50, centerZ + waistZ * 1.13))
+  }
+  const cingulumGeo = mergeSimple(cingulumParts)
+  const cingulum = makeRigidSkinned(cingulumGeo, pelvis, body.skeleton, body.bindMatrix, leatherMat)
+
+  const helmetGeo = new THREE.SphereGeometry(height * 0.072, 12, 6, 0, Math.PI * 2, 0, Math.PI * 0.58)
+    .scale(0.96, 1.08, 1.06)
+    .translate(0, height * 0.935, centerZ + 0.008)
+  const helmet = makeRigidSkinned(helmetGeo, headIdx >= 0 ? headIdx : spine2, body.skeleton, body.bindMatrix, metalMat)
+
+  const spearGeo = mergeSimple([
+    new THREE.CylinderGeometry(0.014, 0.016, height * 1.18, 6).translate(-waistX * 1.48, height * 0.58, centerZ + 0.08),
+    new THREE.ConeGeometry(0.028, 0.16, 4).translate(-waistX * 1.48, height * 1.21, centerZ + 0.08),
+  ])
+  const spear = makeRigidSkinned(spearGeo, handR >= 0 ? handR : spine2, body.skeleton, body.bindMatrix, woodMat)
+
+  const shieldGeo = new THREE.CylinderGeometry(height * 0.19, height * 0.19, 0.025, 14)
+    .rotateZ(Math.PI / 2)
+    .translate(waistX * 1.42, height * 0.64, centerZ + 0.05)
+  const shield = makeRigidSkinned(shieldGeo, armL >= 0 ? armL : spine2, body.skeleton, body.bindMatrix, trim)
+
+  // Porter: crossed hemp rope harness + dorsal Phrygian amphora / woven pack basket
+  const porterGeo = mergeSimple([
+    new THREE.TorusGeometry(waistX * 0.95, 0.014, 4, 14).scale(0.85, 1.35, 0.72).rotateY(0.45).translate(0, height * 0.72, centerZ),
+    new THREE.TorusGeometry(waistX * 0.95, 0.014, 4, 14).scale(0.85, 1.35, 0.72).rotateY(-0.45).translate(0, height * 0.72, centerZ),
+    new THREE.LatheGeometry(
+      [[0, -0.18], [0.06, -0.12], [0.115, 0.04], [0.085, 0.16], [0.04, 0.21], [0.052, 0.26]].map(([x, y]) => new THREE.Vector2(x, y)),
+      10,
+    ).rotateX(-0.22).translate(0, height * 0.75, centerZ - waistZ * 1.45),
+  ])
+  const porterLoad = makeRigidSkinned(porterGeo, spine2 >= 0 ? spine2 : spine1, body.skeleton, body.bindMatrix, woodMat)
+
+  // Pilgrim: wooden walking staff + eulogia ampulla pouch at hip
+  const pilgrimGeo = mergeSimple([
+    new THREE.CylinderGeometry(0.015, 0.018, height * 0.92, 6).translate(-waistX * 1.42, height * 0.46, centerZ + 0.10),
+    new THREE.CylinderGeometry(0.036, 0.036, 0.022, 8).rotateX(Math.PI / 2).translate(waistX * 1.05, height * 0.54, centerZ + 0.04),
+  ])
+  const pilgrimGear = makeRigidSkinned(pilgrimGeo, pelvis, body.skeleton, body.bindMatrix, woodMat)
+
+  const extraMeshes = [mantle, cape, veil, cuirass, cingulum, helmet, spear, shield, porterLoad, pilgrimGear]
+  extraMeshes.forEach(m => { m.visible = false })
+
+  return {
+    baseMeshes,
+    extraMeshes,
+    materials: [cloth, trim, leatherMat, metalMat, woodMat],
+    clothMat: cloth,
+    trimMat: trim,
+    uWeave,
+    setRoleVisuals(role: CitizenRole) {
+      extraMeshes.forEach(m => { m.visible = false })
+      baseMeshes[2].visible = role !== 'soldier' // soldier uses independent cingulum equipment belt
+      if (role === 'resident') {
+        mantle.visible = true
+        veil.visible = gender === 'f' && era === 'byzantine'
+      } else if (role === 'merchant') {
+        cape.visible = era !== 'greek'
+      } else if (role === 'porter') {
+        porterLoad.visible = true
+      } else if (role === 'soldier') {
+        cuirass.visible = true
+        cingulum.visible = true
+        helmet.visible = true
+        spear.visible = true
+        shield.visible = era !== 'roman'
+      } else if (role === 'pilgrim') {
+        cape.visible = true
+        pilgrimGear.visible = true
+        veil.visible = gender === 'f' && era === 'byzantine'
+      } else if (role === 'priest') {
+        mantle.visible = era !== 'byzantine'
+        cape.visible = era === 'byzantine'
+        veil.visible = era === 'byzantine' || gender === 'f'
+      }
+    },
+  }
 }
 
-/** Post-animation two-bone IK and a small, welded position-based cloth solver. */
-function secondaryMotion(root: THREE.Group, skirt: THREE.SkinnedMesh) {
+function mergeSimple(parts: THREE.BufferGeometry[]) {
+  const nonIdx = parts.map(g => g.index ? g.toNonIndexed() : g)
+  let count = 0
+  for (const g of nonIdx) count += g.getAttribute('position').count
+  const pos = new Float32Array(count * 3), nor = new Float32Array(count * 3)
+  let offset = 0
+  for (const g of nonIdx) {
+    pos.set(g.getAttribute('position').array as Float32Array, offset * 3)
+    nor.set(g.getAttribute('normal').array as Float32Array, offset * 3)
+    offset += g.getAttribute('position').count
+    g.dispose()
+  }
+  parts.forEach(g => g.dispose())
+  const out = new THREE.BufferGeometry()
+  out.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+  out.setAttribute('normal', new THREE.BufferAttribute(nor, 3))
+  return out
+}
+
+/** Post-animation two-bone IK, torso posture (age/role/bend), and two-capsule leg + seat position-based cloth solver. */
+function secondaryMotion(root: THREE.Group, skirt: THREE.SkinnedMesh, fabricParams: { damping: number; spring: number }) {
   root.updateMatrixWorld(true)
   const legs = ['l', 'r'].map(side => {
     const thigh = root.getObjectByName(`thigh_${side}`)!, calf = root.getObjectByName(`calf_${side}`)!, foot = root.getObjectByName(`foot_${side}`)!
     return { thigh, calf, foot, sole: foot.getWorldPosition(new THREE.Vector3()).y - root.position.y,
-      hip: new THREE.Vector3(), ankle: new THREE.Vector3(),
+      hip: new THREE.Vector3(), kneePos: new THREE.Vector3(), ankle: new THREE.Vector3(),
       bones: [thigh, calf, foot], saved: [thigh, calf, foot].map(b => b.quaternion.clone()), adjusted: false }
   })
+  const spine1 = root.getObjectByName('spine_01'), spine2 = root.getObjectByName('spine_02'), headBone = root.getObjectByName('Head')
+  const postureBones = [spine1, spine2, headBone].filter(Boolean) as THREE.Object3D[]
+  const postureSaved = postureBones.map(b => b.quaternion.clone())
+  let postureAdjusted = false
+
   const geometry = skirt.geometry.clone()
   const cloth = new THREE.Mesh(geometry, skirt.material)
   cloth.name = 'SimulatedTunic'; cloth.castShadow = cloth.receiveShadow = true; cloth.frustumCulled = false
@@ -145,11 +388,12 @@ function secondaryMotion(root: THREE.Group, skirt: THREE.SkinnedMesh) {
     if (row < 5) { edges.push([i, i + 24]); edges.push([i, (row + 1) * 24 + (col + 1) % 24]) }
   }
   const restLengths = new Float32Array(edges.length)
-  let ready = false, accumulator = 0
+  let ready = false, accumulator = 0, extraStoop = 0
   const lastRoot = new THREE.Vector3(), inverse = new THREE.Matrix4()
   const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), direction = new THREE.Vector3(), bend = new THREE.Vector3(), knee = new THREE.Vector3(), target = new THREE.Vector3()
   const rotation = new THREE.Quaternion(), parentRotation = new THREE.Quaternion(), worldRotation = new THREE.Quaternion()
   const pelvis = root.getObjectByName('pelvis')!, seat = new THREE.Vector3(), seatLocal = new THREE.Vector3(), inverseRootRotation = new THREE.Quaternion()
+  const forwardWorld = new THREE.Vector3()
   function aim(bone: THREE.Object3D, child: THREE.Object3D, point: THREE.Vector3) {
     bone.getWorldPosition(a); child.getWorldPosition(b)
     b.sub(a).normalize(); c.copy(point).sub(a).normalize()
@@ -162,11 +406,27 @@ function secondaryMotion(root: THREE.Group, skirt: THREE.SkinnedMesh) {
     for (const leg of legs) if (leg.adjusted) {
       leg.bones.forEach((bone, i) => bone.quaternion.copy(leg.saved[i])); leg.adjusted = false
     }
+    if (postureAdjusted) {
+      postureBones.forEach((bone, i) => bone.quaternion.copy(postureSaved[i]))
+      postureAdjusted = false
+    }
   }
   return {
     restore,
+    setStoop(rad: number) { extraStoop = rad },
     reset() { restore(); ready = false; accumulator = 0 },
     update(dt: number, motion: CitizenMotion) {
+      const totalBend = extraStoop + (motion.bend ?? 0)
+      if (Math.abs(totalBend) > 1e-4 || Math.abs(motion.look) > 1e-4) {
+        postureBones.forEach((bone, i) => postureSaved[i].copy(bone.quaternion))
+        postureAdjusted = true
+        if (spine1 && Math.abs(totalBend) > 1e-4) spine1.rotateX(totalBend * 0.55)
+        if (spine2 && Math.abs(totalBend) > 1e-4) spine2.rotateX(totalBend * 0.45)
+        if (headBone) {
+          if (Math.abs(totalBend) > 1e-4) headBone.rotateX(-totalBend * 0.45)
+          if (Math.abs(motion.look) > 1e-4) headBone.rotateY(THREE.MathUtils.clamp(motion.look, -0.85, 0.85) * 0.55)
+        }
+      }
       root.updateWorldMatrix(true, true)
       if (motion.grounded && motion.groundAt) for (const leg of legs) {
         const hip = leg.thigh.getWorldPosition(new THREE.Vector3()), joint = leg.calf.getWorldPosition(new THREE.Vector3()), ankle = leg.foot.getWorldPosition(new THREE.Vector3())
@@ -199,21 +459,30 @@ function secondaryMotion(root: THREE.Group, skirt: THREE.SkinnedMesh) {
         skirt.getVertexPosition(row * 25 + col, targets[row * 24 + col]).applyMatrix4(skirt.matrixWorld)
       }
       edges.forEach(([i, j], index) => { restLengths[index] = targets[i].distanceTo(targets[j]) })
-      legs.forEach(leg => { leg.thigh.getWorldPosition(leg.hip); leg.foot.getWorldPosition(leg.ankle) })
+      legs.forEach(leg => {
+        leg.thigh.getWorldPosition(leg.hip)
+        leg.calf.getWorldPosition(leg.kneePos)
+        leg.foot.getWorldPosition(leg.ankle)
+      })
       pelvis.getWorldPosition(seat)
       root.getWorldQuaternion(inverseRootRotation).invert()
+      forwardWorld.set(0, 0, 1).applyQuaternion(root.quaternion)
       if (!ready || lastRoot.distanceToSquared(root.position) > 1) {
         particles.forEach((p, i) => { p.copy(targets[i]); previous[i].copy(p) }); ready = true
       }
       lastRoot.copy(root.position); accumulator = Math.min(accumulator + dt, 3 / 60)
+      const trailingDrag = Math.min(motion.speed, 6) * 0.35 / 3600
       while (accumulator >= 1 / 60) {
         accumulator -= 1 / 60
         for (let i = 0; i < particles.length; i++) {
           const p = particles[i]
           if (i < 24) { p.copy(targets[i]); previous[i].copy(p); continue }
-          a.copy(p); b.copy(p).sub(previous[i]).multiplyScalar(0.92)
-          p.add(b).addScaledVector(c.copy(targets[i]).sub(p), 0.045)
-          p.y -= 2 / 3600; p.x += 0.3 / 3600
+          const rowF = Math.floor(i / 24) / 5
+          a.copy(p); b.copy(p).sub(previous[i]).multiplyScalar(fabricParams.damping)
+          p.add(b).addScaledVector(c.copy(targets[i]).sub(p), fabricParams.spring)
+          p.y -= 2.2 / 3600
+          // Natural aerodynamic trail backward along -forwardWorld so side & rear silhouettes billow cleanly in motion
+          p.addScaledVector(forwardWorld, -trailingDrag * rowF)
           previous[i].copy(a)
         }
         for (let iteration = 0; iteration < 4; iteration++) {
@@ -228,18 +497,20 @@ function secondaryMotion(root: THREE.Group, skirt: THREE.SkinnedMesh) {
           }
           for (let i = 24; i < particles.length; i++) {
             const p = particles[i]
-            a.copy(p).sub(targets[i]); if (a.length() > 0.1) p.copy(targets[i]).add(a.setLength(0.1))
-            // Leg capsules prevent the loose hem from passing through the thighs/calves.
+            a.copy(p).sub(targets[i]); if (a.length() > 0.12) p.copy(targets[i]).add(a.setLength(0.12))
+            // Two-segment leg capsules (thigh->knee and knee->ankle) keep side-view bent knees and rear calves cleanly covered.
             for (const leg of legs) {
-              a.copy(leg.hip); b.copy(leg.ankle).sub(a)
-              const t = THREE.MathUtils.clamp(c.copy(p).sub(a).dot(b) / Math.max(b.lengthSq(), 1e-8), 0, 1)
-              a.addScaledVector(b, t); c.copy(p).sub(a)
-              const radius = 0.085 * root.scale.x
-              if (c.lengthSq() < radius * radius) p.copy(a).add(c.lengthSq() > 1e-8 ? c.setLength(radius) : c.set(radius, 0, 0))
+              for (const [segA, segB, rad] of [[leg.hip, leg.kneePos, 0.094], [leg.kneePos, leg.ankle, 0.078]] as const) {
+                a.copy(segA); b.copy(segB).sub(a)
+                const t = THREE.MathUtils.clamp(c.copy(p).sub(a).dot(b) / Math.max(b.lengthSq(), 1e-8), 0, 1)
+                a.addScaledVector(b, t); c.copy(p).sub(a)
+                const radius = rad * root.scale.x
+                if (c.lengthSq() < radius * radius) p.copy(a).add(c.lengthSq() > 1e-8 ? c.setLength(radius) : c.set(radius, 0, 0))
+              }
             }
-            // Keep the rear panel outside the pelvis as the thighs rotate.
+            // Keep the rear panel outside the pelvis & seat as thighs and torso rotate.
             seatLocal.copy(p).sub(seat).applyQuaternion(inverseRootRotation)
-            const sx = seatLocal.x / (0.18 * root.scale.x), sy = seatLocal.y / (0.18 * root.scale.y), sz = seatLocal.z / (0.16 * root.scale.z)
+            const sx = seatLocal.x / (0.185 * root.scale.x), sy = seatLocal.y / (0.185 * root.scale.y), sz = seatLocal.z / (0.168 * root.scale.z)
             const radiusSq = sx * sx + sy * sy + sz * sz
             if (radiusSq < 1) {
               seatLocal.multiplyScalar(1 / Math.sqrt(Math.max(radiusSq, 1e-6))).applyQuaternion(root.quaternion)
@@ -269,11 +540,12 @@ function secondaryMotion(root: THREE.Group, skirt: THREE.SkinnedMesh) {
 
 export function createRiggedCitizen(era: Era, palette: Palette, gender: Gender = 'm') {
   if (!assets) throw new Error('Citizen assets must finish loading before instantiation')
-  return instantiateCitizen(assets[gender], assets.motions, era, palette)
+  return instantiateCitizen(assets[gender], assets.motions, era, palette, gender)
 }
 
 /** Exported for CPU regression tests without requiring a renderer or network. */
-export function instantiateCitizen(model: GLTF, motions: GLTF, era: Era, palette: Palette) {
+export function instantiateCitizen(model: GLTF, motions: GLTF, era: Era, palette: Palette, genderHint?: Gender) {
+  const gender: Gender = genderHint ?? (model.scene.name.toLowerCase().includes('f') ? 'f' : 'm')
   const root = new THREE.Group(), content = clone(model.scene)
   root.add(content); content.updateMatrixWorld(true)
   const ownedMaterials = new Set<THREE.Material>(), skeletons = new Set<THREE.Skeleton>()
@@ -291,17 +563,32 @@ export function instantiateCitizen(model: GLTF, motions: GLTF, era: Era, palette
   })
   if (!body) throw new Error('Citizen model has no skinned body')
   const bodyMesh = body as THREE.SkinnedMesh
-  const outfit = makeOutfit(bodyMesh, era, palette)
-  for (const mesh of outfit) { bodyMesh.parent!.add(mesh); ownedMaterials.add(mesh.material as THREE.Material) }
+  // Measure height from the bare body BEFORE adding role props (e.g. tall spears) so human stature stays 1.75 m.
   const bounds = new THREE.Box3().setFromObject(content)
+  const outfit = makeOutfit(bodyMesh, era, palette, gender)
+  for (const mesh of [...outfit.baseMeshes, ...outfit.extraMeshes]) bodyMesh.parent!.add(mesh)
+  outfit.materials.forEach(m => ownedMaterials.add(m))
   const scale = 1.75 / (bounds.max.y - bounds.min.y)
   content.scale.setScalar(scale); const baseY = -bounds.min.y * scale; content.position.y = baseY
   const rawAnimations = motions.parser.json.animations as Array<{ name: string; extras?: { bindPose?: Record<string, BindPose> } }>
   const clips = motions.animations.map(c => retargetCitizenClip(c, content, motions.scene, rawAnimations.find(a => a.name === c.name)?.extras?.bindPose))
-  const skirtPositions = outfit[1].geometry.getAttribute('position')
+  const skirtPositions = outfit.baseMeshes[1].geometry.getAttribute('position')
   const workCut = skirtPositions.clone()
-  let currentCut: 'work' | 'full' = 'work'
-  const secondary = secondaryMotion(root, outfit[1])
+  let currentCut: GarmentCut = 'work'
+  let currentFabric: FabricKind = era === 'roman' ? 'linen' : 'wool'
+  let currentRole: CitizenRole = 'resident'
+  let currentAge: AgeGroup = 'adult'
+  const fabricParams = { damping: 0.92, spring: 0.052 }
+  const secondary = secondaryMotion(root, outfit.baseMeshes[1], fabricParams)
+  const applyFabric = (fabric: FabricKind) => {
+    currentFabric = fabric
+    outfit.uWeave.value = fabric === 'linen' ? 0 : 1
+    outfit.clothMat.roughness = fabric === 'linen' ? 0.72 : 0.93
+    fabricParams.damping = fabric === 'linen' ? 0.93 : 0.89
+    fabricParams.spring = fabric === 'linen' ? 0.062 : 0.044
+  }
+  applyFabric(currentFabric)
+
   const mixer = new THREE.AnimationMixer(content)
   const actions = new Map(clips.map(c => [c.name, mixer.clipAction(c)]))
   let current: THREE.AnimationAction | null = null, actionName = '', lastGrounded = true, wasGreeting = false, gestureUntil = 0, elapsed = 0, landingUntil = 0
@@ -313,23 +600,59 @@ export function instantiateCitizen(model: GLTF, motions: GLTF, era: Era, palette
     if (current) current.crossFadeTo(next, 0.2, false)
     current = next; actionName = name
   }
+  const syncStoop = () => {
+    const ageStoop = currentAge === 'older' ? 0.13 : 0
+    const roleStoop = currentRole === 'porter' ? 0.16 : currentRole === 'merchant' && currentAge === 'older' ? 0.06 : 0
+    secondary.setStoop(ageStoop + roleStoop)
+  }
+  const applyCut = (cut: GarmentCut) => {
+    if (cut === currentCut) return
+    currentCut = cut
+    const porterHitch = currentRole === 'porter' ? -0.05 : 0
+    for (let i = 0; i < workCut.count; i++) {
+      const row = Math.floor(i / 25) / 5
+      const extra = cut === 'full' ? row * row : 0
+      skirtPositions.setXYZ(
+        i,
+        workCut.getX(i) * (1 + extra * 0.11),
+        workCut.getY(i) - extra * 0.135 - porterHitch * row,
+        workCut.getZ(i) * (1 + extra * 0.095),
+      )
+    }
+    skirtPositions.needsUpdate = true
+    secondary.reset()
+  }
   choose('Idle_Loop')
   return {
     root, clips, gender: model.scene.name,
-    setCut(cut: 'work' | 'full') {
-      if (cut === currentCut) return
-      currentCut = cut
-      for (let i = 0; i < workCut.count; i++) {
-        const row = Math.floor(i / 25) / 5
-        const extra = cut === 'full' ? row * row : 0
-        skirtPositions.setXYZ(i, workCut.getX(i) * (1 + extra * 0.10),
-          workCut.getY(i) - extra * 0.12, workCut.getZ(i) * (1 + extra * 0.08))
+    get role() { return currentRole },
+    get fabric() { return currentFabric },
+    get cut() { return currentCut },
+    get age() { return currentAge },
+    setCut(cut: GarmentCut) { applyCut(cut) },
+    setFabric(fabric: FabricKind) { applyFabric(fabric) },
+    setRole(role: CitizenRole) {
+      currentRole = role
+      outfit.setRoleVisuals(role)
+      syncStoop()
+    },
+    setAge(age: AgeGroup) {
+      currentAge = age
+      syncStoop()
+    },
+    configure(cfg: CitizenConfig) {
+      if (cfg.role) { currentRole = cfg.role; outfit.setRoleVisuals(cfg.role) }
+      if (cfg.age) currentAge = cfg.age
+      if (cfg.fabric) applyFabric(cfg.fabric)
+      syncStoop()
+      if (cfg.cut) {
+        currentCut = cfg.cut === 'full' ? 'work' : 'full' // force recompute when role hitch changes
+        applyCut(cfg.cut)
       }
-      skirtPositions.needsUpdate = true
-      secondary.reset()
     },
     setPalette(next: Palette) {
-      for (let i = 0; i < outfit.length; i++) (outfit[i].material as THREE.MeshStandardMaterial).color.copy(i === 2 ? next.accent : next.cloth)
+      outfit.clothMat.color.copy(next.cloth)
+      outfit.trimMat.color.copy(next.accent)
     },
     reset() { secondary.reset(); mixer.stopAllAction(); current = null; actionName = ''; gestureUntil = landingUntil = 0; lastGrounded = true; wasGreeting = false; choose('Idle_Loop') },
     update(rawDt: number, motion: CitizenMotion) {
@@ -351,6 +674,10 @@ export function instantiateCitizen(model: GLTF, motions: GLTF, era: Era, palette
       secondary.update(dt, motion)
     },
     get action() { return actionName },
-    dispose() { secondary.dispose(); mixer.stopAllAction(); mixer.uncacheRoot(content); ownedMaterials.forEach(m => m.dispose()); skeletons.forEach(s => s.dispose()); outfit.forEach(m => m.geometry.dispose()) },
+    dispose() {
+      secondary.dispose(); mixer.stopAllAction(); mixer.uncacheRoot(content)
+      ownedMaterials.forEach(m => m.dispose()); skeletons.forEach(s => s.dispose())
+      ;[...outfit.baseMeshes, ...outfit.extraMeshes].forEach(m => m.geometry.dispose())
+    },
   }
 }
