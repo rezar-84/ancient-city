@@ -12,6 +12,7 @@ import { gridFrame, stallSpots } from './spots'
 import { walk } from './WalkControls'
 import { WorldProbe } from './physics'
 import { createRiggedCitizen, loadCitizenAssets } from './riggedCitizen'
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { MarketSheep } from './MarketSheep'
 
 type Variant = 'greek' | 'roman' | 'byzantine'
@@ -37,6 +38,34 @@ export const NPC_STATE: { x: Float32Array; z: Float32Array; count: number; femal
 
 export function Crowd({ terrain }: { terrain: Terrain }) {
   const mode = useApp((s) => s.mode)
+  const [horse, setHorse] = useState<{ root: THREE.Group; mixer: THREE.AnimationMixer } | null>(null)
+  useEffect(() => {
+    if (mode !== 'walk') return
+    let active = true
+    let dispose: (() => void) | undefined
+    new GLTFLoader().load('/models/animals/cart-horse.glb', model => {
+      const root = model.scene
+      const mixer = new THREE.AnimationMixer(root)
+      dispose = () => {
+        mixer.stopAllAction()
+        mixer.uncacheRoot(root)
+        root.traverse(o => {
+          if (o instanceof THREE.Mesh) {
+            o.geometry.dispose()
+            for (const m of Array.isArray(o.material) ? o.material : [o.material]) m.dispose()
+          }
+          if (o instanceof THREE.SkinnedMesh) o.skeleton.dispose()
+        })
+      }
+      if (!active) { dispose(); return }
+      root.scale.setScalar(0.003)
+      root.traverse(o => { if (o instanceof THREE.Mesh) o.castShadow = o.receiveShadow = true })
+      mixer.clipAction(model.animations[0]).play()
+      root.visible = false
+      setHorse({ root, mixer })
+    }, undefined, error => console.warn('Detailed cart horse unavailable', error))
+    return () => { active = false; dispose?.(); setHorse(null) }
+  }, [mode])
   const [citizenAssets, setCitizenAssets] = useState(false)
   useEffect(() => {
     if (mode !== 'walk' || citizenAssets) return
@@ -308,12 +337,29 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
     } else m4.compose(hidden, q.identity(), one)
     people.setMatrixAt(av, m4)
 
+    let nearestCart = -1
+    let nearestDistance = 32 ** 2
+    if (horse && walking) {
+      horse.root.visible = false
+      carts.forEach((cart, i) => {
+        const [x, z] = F.P(cart.u, cart.v)
+        const distance = (x - px) ** 2 + (z - pz) ** 2
+        if (distance < nearestDistance) { nearestCart = i; nearestDistance = distance }
+      })
+    }
     carts.forEach((cr, i) => {
       cr.u += cr.dir * cr.speed * dt; if (cr.u > F.L - 30 || cr.u < 30) cr.dir *= -1
       const [x, z] = F.P(cr.u, cr.v)
       pos.set(x, surfaceY(x, z, npcs.length + 1 + i * 2), z)
       q.setFromAxisAngle(up, F.yawU + (cr.dir > 0 ? 0 : Math.PI))
-      m4.compose(pos, q, one); horses.setMatrixAt(i, m4)
+      if (horse && i === nearestCart) {
+        horse.root.visible = true
+        horse.root.position.copy(pos)
+        horse.root.quaternion.copy(q)
+        horse.mixer.update(dt * cr.speed / 1.4)
+        m4.compose(hidden, q, one)
+      } else m4.compose(pos, q, one)
+      horses.setMatrixAt(i, m4)
       // cart trails 2.6 m behind the horse
       const [cx, cz] = F.P(cr.u - cr.dir * 2.6, cr.v)
       pos.set(cx, surfaceY(cx, cz, npcs.length + 2 + i * 2), cz); m4.compose(pos, q, one); cartMesh.setMatrixAt(i, m4)
@@ -328,6 +374,7 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
       {sim.avatar && <primitive object={sim.avatar.root} />}
       {sim.closePeople.map((slot, i) => <primitive key={i} object={slot.citizen.root} />)}
       <primitive object={sim.horses} />
+      {horse && <primitive object={horse.root} />}
       <primitive object={sim.cartMesh} />
       {mode === 'walk' && <MarketSheep terrain={terrain} year={year} />}
     </group>
