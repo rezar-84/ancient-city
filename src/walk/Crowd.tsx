@@ -13,6 +13,7 @@ import { walk } from './WalkControls'
 import { WorldProbe } from './physics'
 import { createRiggedCitizen, loadCitizenAssets } from './riggedCitizen'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { cartPose } from './cartRoute'
 import { MarketSheep } from './MarketSheep'
 
 type Variant = 'greek' | 'roman' | 'byzantine'
@@ -200,7 +201,7 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
     })
 
     const nCarts = variant === 'roman' ? 16 : 9
-    const carts = Array.from({ length: nCarts }, (_, i) => ({ u: 40 + rand() * (F.L - 80), v: i % 2 ? 2.4 : -2.4, dir: i % 2 ? 1 : -1, speed: 1.2 + rand() * 0.3, phase: rand() * 6.28 }))
+    const carts = Array.from({ length: nCarts }, (_, i) => ({ distance: 10 + rand() * (F.L - 80) + (i % 2 ? 0 : F.L - 60 + Math.PI * 2.4), speed: 1.2 + rand() * 0.3, phase: rand() * 6.28 }))
     const hGeo = createHorseGeometry(), hAttr = createCrowdAttributes(nCarts)
     hGeo.setAttribute('iAnim', hAttr.anim); hGeo.setAttribute('iTint0', hAttr.tint0); hGeo.setAttribute('iTint1', hAttr.tint1); hGeo.setAttribute('iTint2', hAttr.tint2)
     const cGeo = createCartGeometry(), cAttr = createCrowdAttributes(nCarts)
@@ -253,7 +254,7 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
     if (mode === 'walk' && walkInputBlocked(useApp.getState())) return
     const dt = Math.min(rawDt, 0.1); clock.current += dt
     const simYear = mode === 'walk' ? year : null
-    const { F, npcs, carts, people, horses, cartMesh, pAttr, hAttr, cAttr, mats } = sim
+    const { F, npcs, carts, people, horses, cartMesh, pAttr, mats } = sim
     for (const m of mats) (m.userData.uTime as { value: number }).value = clock.current
     const walking = mode === 'walk'
     const px = walk.x, pz = walk.z
@@ -346,16 +347,18 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
     if (horse && walking) {
       horse.root.visible = false
       carts.forEach((cart, i) => {
-        const [x, z] = F.P(cart.u, cart.v)
+        const pose = cartPose(cart.distance, F.L)
+        const [x, z] = F.P(pose.u, pose.v)
         const distance = (x - px) ** 2 + (z - pz) ** 2
         if (distance < nearestDistance) { nearestCart = i; nearestDistance = distance }
       })
     }
     carts.forEach((cr, i) => {
-      cr.u += cr.dir * cr.speed * dt; if (cr.u > F.L - 30 || cr.u < 30) cr.dir *= -1
-      const [x, z] = F.P(cr.u, cr.v)
+      cr.distance += cr.speed * dt
+      const lead = cartPose(cr.distance, F.L)
+      const [x, z] = F.P(lead.u, lead.v)
       pos.set(x, surfaceY(x, z, npcs.length + 1 + i * 2), z)
-      q.setFromAxisAngle(up, F.yawU + (cr.dir > 0 ? 0 : Math.PI))
+      q.setFromAxisAngle(up, F.yawU + lead.heading)
       if (horse && i === nearestCart) {
         horse.root.visible = true
         horse.root.position.copy(pos)
@@ -365,11 +368,13 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
       } else m4.compose(pos, q, one)
       horses.setMatrixAt(i, m4)
       // cart trails 2.6 m behind the horse
-      const [cx, cz] = F.P(cr.u - cr.dir * 2.6, cr.v)
+      const axle = cartPose(cr.distance - 2.6, F.L)
+      const [cx, cz] = F.P(axle.u, axle.v)
+      q.setFromAxisAngle(up, Math.atan2(x - cx, z - cz))
       pos.set(cx, surfaceY(cx, cz, npcs.length + 2 + i * 2), cz); m4.compose(pos, q, one); cartMesh.setMatrixAt(i, m4)
     })
     people.instanceMatrix.needsUpdate = true; horses.instanceMatrix.needsUpdate = true; cartMesh.instanceMatrix.needsUpdate = true
-    pAttr.anim.needsUpdate = true; hAttr.anim.needsUpdate = true; cAttr.anim.needsUpdate = true
+    pAttr.anim.needsUpdate = true
   })
 
   return (
