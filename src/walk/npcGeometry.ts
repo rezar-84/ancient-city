@@ -138,7 +138,7 @@ export function createHeldPropGeometry(kind: 'amphora' | 'basket' | 'staff' | 's
   return f.finish();
 }
 
-/** Withers at 1.6 m; +Z is forward. FL/FR/BL/BR are limb IDs 1/2/3/4. */
+/** Withers at 1.6 m; +Z is forward. FL/FR/BL/BR are limb IDs 1/2/3/4. Includes Roman breast-collar harness & bridle. */
 export function createHorseGeometry(): THREE.BufferGeometry {
   const f = new Figure();
   f.add(new THREE.SphereGeometry(1, 12, 8).scale(0.34, 0.37, 0.85).translate(0, 1.25, 0));
@@ -165,32 +165,129 @@ export function createHorseGeometry(): THREE.BufferGeometry {
   for (const x of [-0.085, 0.085]) f.add(new THREE.ConeGeometry(0.065, 0.23, 4).translate(x, 2.15, 0.91), 0, 5, neck, 0.5);
   f.add(new THREE.CylinderGeometry(0.035, 0.075, 0.72, 6, 4).scale(1,1,1.6).rotateX(0.28).translate(0,1.69,0.55), 2, 7, neck, 1, 0, 0.3);
   f.add(new THREE.CylinderGeometry(0.08, 0.025, 0.8, 5).rotateX(-0.35).translate(0, 0.99, -0.88), 2, 6, [0, 1.37, -0.72], 1, 0, 0.3);
-  f.box([0.7, 0.075, 0.13], [0, 1.47, 0.26], 3);
-  f.box([0.27, 0.06, 0.055], [0, 1.92, 1.29], 3, 5, neck, 0.5);
-  for (const x of [-0.137, 0.137]) f.box([0.025, 0.27, 0.055], [x, 1.94, 1.06], 3, 5, neck, 0.5);
+  // Dorsal saddle pad (dorsuale), belly girth, tug loops at (±0.40, 1.18, 0.20), breast-collar (pectorale) & breeching
+  f.box([0.74, 0.08, 0.18], [0, 1.56, 0.20], 3);
+  f.box([0.66, 0.045, 0.09], [0, 0.90, 0.20], 3, 0, [0, 0, 0], 1, 0.65);
+  f.box([0.72, 0.095, 0.08], [0, 1.18, 0.84], 3);
+  f.box([0.68, 0.075, 0.07], [0, 1.18, -0.82], 3);
+  for (const s of [-1, 1]) {
+    f.box([0.055, 0.66, 0.11], [s * 0.36, 1.23, 0.20], 3);
+    f.add(new THREE.BoxGeometry(0.045, 0.09, 0.68).rotateY(s * 0.08).translate(s * 0.37, 1.18, 0.52), 3);
+    f.add(new THREE.BoxGeometry(0.04, 0.075, 1.02).translate(s * 0.36, 1.18, -0.31), 3);
+    // Shaft tug loop & bronze terret ring
+    f.add(new THREE.TorusGeometry(0.055, 0.016, 4, 8).rotateY(Math.PI / 2).translate(s * 0.40, 1.18, 0.20), 3, 0, [0, 0, 0], 1, 0, 1.25);
+    f.add(new THREE.TorusGeometry(0.036, 0.01, 4, 8).translate(s * 0.16, 1.63, 0.20), 3, 0, [0, 0, 0], 1, 0, 1.35);
+    // Reins from bit to terret ring
+    f.add(new THREE.BoxGeometry(0.018, 0.022, 0.96).rotateX(-0.24).translate(s * 0.145, 1.74, 0.68), 3, 5, neck, 0.35, 0, 0.7);
+  }
+  // Bridle: noseband, browband, cheek straps and bronze bit rings
+  f.box([0.24, 0.045, 0.055], [0, 1.91, 1.27], 3, 5, neck, 0.5);
+  f.box([0.27, 0.04, 0.045], [0, 2.04, 1.03], 3, 5, neck, 0.5);
+  for (const x of [-0.135, 0.135]) {
+    f.box([0.025, 0.27, 0.045], [x, 1.95, 1.12], 3, 5, neck, 0.5);
+    f.add(new THREE.TorusGeometry(0.032, 0.009, 4, 8).rotateY(Math.PI / 2).translate(x, 1.87, 1.27), 3, 5, neck, 0.5, 0, 1.35);
+  }
   return f.finish();
 }
 
-/** Axle lies on X; origin is ground level directly below its centre. */
+/** Standalone harness & bridle meshes for the close-up rigged GLB draught horse (metre coordinates). */
+export function createDetailedHorseHarness(): { body: THREE.Group; head: THREE.Group; dispose: () => void } {
+  const leather = new THREE.MeshStandardMaterial({ color: '#5c3322', roughness: 0.78 });
+  const padMat = new THREE.MeshStandardMaterial({ color: '#7a2f2a', roughness: 0.88 });
+  const bronze = new THREE.MeshStandardMaterial({ color: '#b58d47', metalness: 0.62, roughness: 0.38 });
+  const geometries: THREE.BufferGeometry[] = [];
+  const mk = (geo: THREE.BufferGeometry, mat: THREE.Material) => {
+    geometries.push(geo);
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.castShadow = mesh.receiveShadow = true;
+    return mesh;
+  };
+  const body = new THREE.Group();
+  // Padded dorsal saddle-band (dorsuale), side straps & belly girth around the GLB barrel
+  body.add(mk(new THREE.BoxGeometry(0.76, 0.075, 0.22).translate(0.03, 1.41, 0.20), padMat));
+  body.add(mk(new THREE.BoxGeometry(0.78, 0.045, 0.12).translate(0.03, 1.44, 0.20), leather));
+  body.add(mk(new THREE.BoxGeometry(0.66, 0.04, 0.09).translate(0.03, 0.82, 0.20), leather));
+  // Wide breast-collar (pectorale) & breeching strap (postilena)
+  body.add(mk(new THREE.BoxGeometry(0.74, 0.10, 0.08).translate(0.03, 1.18, 0.80), leather));
+  body.add(mk(new THREE.BoxGeometry(0.70, 0.085, 0.07).translate(0.03, 1.16, -0.84), leather));
+  for (const pz of [-0.22, 0, 0.22]) {
+    body.add(mk(new THREE.CylinderGeometry(0.038, 0.038, 0.02, 10).rotateX(Math.PI / 2).translate(0.03 + pz, 1.18, 0.845), bronze));
+  }
+  for (const s of [-1, 1]) {
+    const sx = 0.03 + s * 0.38;
+    body.add(mk(new THREE.BoxGeometry(0.05, 0.60, 0.11).translate(sx, 1.12, 0.20), leather));
+    body.add(mk(new THREE.BoxGeometry(0.045, 0.095, 0.62).rotateY(s * 0.07).translate(sx, 1.18, 0.50), leather));
+    body.add(mk(new THREE.BoxGeometry(0.04, 0.08, 1.04).translate(sx - s * 0.01, 1.17, -0.32), leather));
+    // Shaft tug loop at (±0.40, 1.18, 0.20) + bronze buckle & dorsal terret ring
+    body.add(mk(new THREE.TorusGeometry(0.058, 0.017, 6, 12).rotateY(Math.PI / 2).translate(0.03 + s * 0.40, 1.18, 0.20), leather));
+    body.add(mk(new THREE.TorusGeometry(0.038, 0.01, 6, 12).translate(0.03 + s * 0.16, 1.49, 0.20), bronze));
+    // Reins draped from terret back toward the cart front bolster
+    body.add(mk(new THREE.CylinderGeometry(0.009, 0.009, 1.95, 5).rotateX(Math.PI / 2 + 0.19).translate(0.03 + s * 0.18, 1.31, -0.74), leather));
+  }
+  const head = new THREE.Group();
+  // Headstall relative to Head world reference (0.02, 1.78, 0.98)
+  head.add(mk(new THREE.BoxGeometry(0.24, 0.038, 0.048).translate(0, -0.06, 0.34), leather));
+  head.add(mk(new THREE.BoxGeometry(0.27, 0.035, 0.042).translate(0, 0.08, 0.10), leather));
+  for (const s of [-1, 1]) {
+    head.add(mk(new THREE.BoxGeometry(0.024, 0.25, 0.04).rotateX(0.32).translate(s * 0.13, 0.01, 0.21), leather));
+    head.add(mk(new THREE.TorusGeometry(0.032, 0.009, 5, 10).rotateY(Math.PI / 2).translate(s * 0.132, -0.09, 0.35), bronze));
+    head.add(mk(new THREE.CylinderGeometry(0.008, 0.008, 0.84, 5).rotateX(Math.PI / 2 - 0.24).translate(s * 0.14, -0.19, -0.04), leather));
+  }
+  return {
+    body,
+    head,
+    dispose() {
+      geometries.forEach(g => g.dispose());
+      leather.dispose(); padMat.dispose(); bronze.dispose();
+    },
+  };
+}
+
+/** Axle lies on X (1.42 m Roman track gauge); origin is ground level directly below its centre.
+ * Angled shafts rise from y=0.66 at the front bolster to (x=±0.40, y=1.18, z=+2.80), matching the horse's tug loops 2.6 m ahead. */
 export function createCartGeometry(): THREE.BufferGeometry {
   const f = new Figure();
-  f.box([1.22, 0.12, 1.65], [0, 0.68, 0], 0);
-  f.box([1.6, 0.09, 0.09], [0, 0.55, 0], 3);
-  for (const x of [-0.61, 0.61]) {
-    f.box([0.075, 0.4, 1.65], [x, 0.92, 0], 0);
-    f.box([0.075, 0.085, 2.3], [x, 0.68, 1.8], 0);
+  // Planked timber bed, heavy axle tree, bolsters & crossbars
+  f.box([1.22, 0.11, 1.70], [0, 0.67, 0], 0);
+  f.box([1.64, 0.095, 0.095], [0, 0.55, 0], 3);
+  f.box([1.26, 0.08, 0.12], [0, 0.61, 0.76], 0, 0, [0, 0, 0], 1, 0.82);
+  f.box([1.26, 0.08, 0.12], [0, 0.61, -0.76], 0, 0, [0, 0, 0], 1, 0.82);
+  for (const x of [-0.58, 0.58]) {
+    f.box([0.07, 0.42, 1.70], [x, 0.92, 0], 0);
+    for (const stakeZ of [-0.72, -0.24, 0.24, 0.72]) f.box([0.085, 0.48, 0.065], [x, 0.94, stakeZ], 0, 0, [0, 0, 0], 1, 0.78);
   }
-  f.box([1.22, 0.4, 0.075], [0, 0.92, -0.79], 0);
-  for (const x of [-0.75, 0.75]) {
+  // Angled ash-wood draught shafts converging from (±0.52, 0.66, 0.76) up to horse tug loops (±0.40, 1.18, 2.80)
+  for (const s of [-1, 1]) {
+    const shaft = new THREE.BoxGeometry(0.072, 0.082, 2.14)
+      .rotateX(-0.249)
+      .rotateY(-s * 0.058)
+      .translate(s * 0.46, 0.92, 1.78);
+    f.add(shaft, 0);
+    // Iron shaft band & trace hook at the tug loop attachment point
+    f.box([0.088, 0.096, 0.12], [s * 0.40, 1.18, 2.80], 3, 0, [0, 0, 0], 1, 1.2);
+  }
+  // Front & rear planked gates
+  f.box([1.22, 0.40, 0.07], [0, 0.92, -0.81], 0);
+  f.box([1.22, 0.26, 0.06], [0, 0.85, 0.82], 0);
+  // 1.10 m diameter wheels (r=0.55) at 1.42 m track gauge (x = ±0.71) with iron tires, 8 spokes, nave hubs & linchpins
+  for (const s of [-1, 1]) {
+    const x = s * 0.71;
     const hub: Point = [x, 0.55, 0];
-    f.add(new THREE.CylinderGeometry(0.55, 0.55, 0.09, 10).rotateZ(Math.PI / 2).rotateX(Math.PI / 10).translate(...hub), 3, 0, hub, 1, 1);
-    for (const angle of [0, Math.PI / 3, -Math.PI / 3]) {
-      f.add(new THREE.BoxGeometry(0.105, 0.87, 0.045).rotateX(angle).translate(...hub), 0, 0, hub, 1, 1);
+    // Shrunk-on iron tire rim + wooden felloe band (kept >= y=0)
+    f.add(new THREE.TorusGeometry(0.515, 0.034, 6, 14).rotateY(Math.PI / 2).translate(...hub), 3, 0, hub, 1, 1, 0.55);
+    f.add(new THREE.TorusGeometry(0.475, 0.042, 5, 14).rotateY(Math.PI / 2).translate(...hub), 0, 0, hub, 1, 1, 0.88);
+    // Nave hub + bronze linchpin cap
+    f.add(new THREE.CylinderGeometry(0.095, 0.095, 0.18, 8).rotateZ(Math.PI / 2).translate(...hub), 0, 0, hub, 1, 1, 0.72);
+    f.box([0.03, 0.14, 0.03], [x + s * 0.105, 0.55, 0], 3);
+    for (const angle of [0, Math.PI / 4, Math.PI / 2, (3 * Math.PI) / 4]) {
+      f.add(new THREE.BoxGeometry(0.055, 0.92, 0.042).rotateX(angle).translate(...hub), 0, 0, hub, 1, 1);
     }
   }
-  for (const x of [-0.28, 0.28]) {
-    f.box([0.5, 0.44, 1.15], [x, 0.96, -0.05], 1);
-    f.box([0.515, 0.455, 0.035], [x, 0.96, -0.26], 3);
+  // Lashed wool bales & stone block cargo
+  for (const x of [-0.27, 0.27]) {
+    f.box([0.48, 0.42, 1.12], [x, 0.94, -0.06], 1);
+    f.box([0.50, 0.44, 0.035], [x, 0.94, -0.28], 3);
+    f.box([0.50, 0.44, 0.035], [x, 0.94, 0.18], 3);
   }
   return f.finish();
 }

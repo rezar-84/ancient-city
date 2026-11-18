@@ -7,7 +7,7 @@ import { LANDMARKS } from '../content/landmarks'
 import { solidMonumentAt } from '../scene/footprints'
 import { CHARACTERS } from '../content/characters'
 import { useApp, walkInputBlocked } from '../store'
-import { createCartGeometry, createCrowdAttributes, createHorseGeometry, createPersonGeometry, ERA_PALETTES, patchCrowdMaterial, SKIN_TONES } from './npcGeometry'
+import { createCartGeometry, createCrowdAttributes, createDetailedHorseHarness, createHorseGeometry, createPersonGeometry, ERA_PALETTES, patchCrowdMaterial, SKIN_TONES } from './npcGeometry'
 import { gridFrame, stallSpots } from './spots'
 import { walk } from './WalkControls'
 import { WorldProbe } from './physics'
@@ -39,18 +39,21 @@ export const NPC_STATE: { x: Float32Array; z: Float32Array; count: number; femal
 
 export function Crowd({ terrain }: { terrain: Terrain }) {
   const mode = useApp((s) => s.mode)
-  const [horse, setHorse] = useState<{ root: THREE.Group; mixer: THREE.AnimationMixer } | null>(null)
+  const [horse, setHorse] = useState<{ root: THREE.Group; mixer: THREE.AnimationMixer; syncHarness: () => void } | null>(null)
   useEffect(() => {
     if (mode !== 'walk') return
     let active = true
     let dispose: (() => void) | undefined
     new GLTFLoader().load('/models/animals/cart-horse.glb', model => {
-      const root = model.scene
-      const mixer = new THREE.AnimationMixer(root)
+      const rigGroup = new THREE.Group()
+      const meshRoot = model.scene
+      const mixer = new THREE.AnimationMixer(meshRoot)
+      const harness = createDetailedHorseHarness()
       dispose = () => {
         mixer.stopAllAction()
-        mixer.uncacheRoot(root)
-        root.traverse(o => {
+        mixer.uncacheRoot(meshRoot)
+        harness.dispose()
+        meshRoot.traverse(o => {
           if (o instanceof THREE.Mesh) {
             o.geometry.dispose()
             for (const m of Array.isArray(o.material) ? o.material : [o.material]) m.dispose()
@@ -59,11 +62,35 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
         })
       }
       if (!active) { dispose(); return }
-      root.scale.setScalar(0.003)
-      root.traverse(o => { if (o instanceof THREE.Mesh) o.castShadow = o.receiveShadow = true })
+      meshRoot.scale.setScalar(0.003)
+      meshRoot.traverse(o => { if (o instanceof THREE.Mesh) o.castShadow = o.receiveShadow = true })
+      rigGroup.add(meshRoot, harness.body, harness.head)
+      const torsoBone = meshRoot.getObjectByName('Torso')
+      const headBone = meshRoot.getObjectByName('Head')
       mixer.clipAction(model.animations[0]).play()
-      root.visible = false
-      setHorse({ root, mixer })
+      mixer.update(0)
+      rigGroup.updateMatrixWorld(true)
+      const invRig = new THREE.Matrix4()
+      const tmpPos = new THREE.Vector3()
+      const restTorso = torsoBone ? torsoBone.getWorldPosition(new THREE.Vector3()) : new THREE.Vector3(0.043, 1.115, -0.091)
+      const syncHarness = () => {
+        rigGroup.updateWorldMatrix(true, false)
+        invRig.copy(rigGroup.matrixWorld).invert()
+        meshRoot.updateMatrixWorld(true)
+        if (torsoBone) {
+          torsoBone.getWorldPosition(tmpPos).applyMatrix4(invRig)
+          harness.body.position.set(0, tmpPos.y - restTorso.y, (tmpPos.z - restTorso.z) * 0.5)
+        }
+        if (headBone) {
+          headBone.getWorldPosition(tmpPos).applyMatrix4(invRig)
+          harness.head.position.copy(tmpPos)
+        } else {
+          harness.head.position.set(0.019, 1.785, 0.976)
+        }
+      }
+      syncHarness()
+      rigGroup.visible = false
+      setHorse({ root: rigGroup, mixer, syncHarness })
     }, undefined, error => console.warn('Detailed cart horse unavailable', error))
     return () => { active = false; dispose?.(); setHorse(null) }
   }, [mode])
@@ -353,25 +380,34 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
         if (distance < nearestDistance) { nearestCart = i; nearestDistance = distance }
       })
     }
+    const qPitch = new THREE.Quaternion()
+    const xAxis = new THREE.Vector3(1, 0, 0)
     carts.forEach((cr, i) => {
       cr.distance += cr.speed * dt
       const lead = cartPose(cr.distance, F.L)
       const [x, z] = F.P(lead.u, lead.v)
-      pos.set(x, surfaceY(x, z, npcs.length + 1 + i * 2), z)
+      const horseY = surfaceY(x, z, npcs.length + 1 + i * 2)
+      const axle = cartPose(cr.distance - 2.6, F.L)
+      const [cx, cz] = F.P(axle.u, axle.v)
+      const cartY = surfaceY(cx, cz, npcs.length + 2 + i * 2)
+      const slopePitch = THREE.MathUtils.clamp(Math.atan2(horseY - cartY, 2.6), -0.25, 0.25)
+      pos.set(x, horseY, z)
       q.setFromAxisAngle(up, F.yawU + lead.heading)
+      qPitch.setFromAxisAngle(xAxis, -slopePitch)
+      q.multiply(qPitch)
       if (horse && i === nearestCart) {
         horse.root.visible = true
         horse.root.position.copy(pos)
         horse.root.quaternion.copy(q)
         horse.mixer.update(dt * cr.speed / 1.4)
+        horse.syncHarness()
         m4.compose(hidden, q, one)
       } else m4.compose(pos, q, one)
       horses.setMatrixAt(i, m4)
-      // cart trails 2.6 m behind the horse
-      const axle = cartPose(cr.distance - 2.6, F.L)
-      const [cx, cz] = F.P(axle.u, axle.v)
+      // cart trails 2.6 m behind the horse; pitch matches the street grade so shafts meet the tug loops
       q.setFromAxisAngle(up, Math.atan2(x - cx, z - cz))
-      pos.set(cx, surfaceY(cx, cz, npcs.length + 2 + i * 2), cz); m4.compose(pos, q, one); cartMesh.setMatrixAt(i, m4)
+      q.multiply(qPitch)
+      pos.set(cx, cartY, cz); m4.compose(pos, q, one); cartMesh.setMatrixAt(i, m4)
     })
     people.instanceMatrix.needsUpdate = true; horses.instanceMatrix.needsUpdate = true; cartMesh.instanceMatrix.needsUpdate = true
     pAttr.anim.needsUpdate = true

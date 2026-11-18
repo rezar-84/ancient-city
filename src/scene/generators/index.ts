@@ -1,17 +1,16 @@
 import type { Group } from 'three';
-import { createTheatre } from './theatre';
-import { createFrontinusGate, createByzantineGate } from './gate';
-import { createColonnadedStreet } from './colonnade';
-import { createTemple } from './temple';
-import { createAgora } from './agora';
-import { createMartyrium } from './martyrium';
-import { createBaths } from './baths';
-import { createNymphaeum } from './nymphaeum';
-import { createNecropolis } from './necropolis';
-import { createWall } from './walls';
-import type { WallOptions } from './walls';
-import { createLatrine } from './latrine';
-import { createChurch } from './church';
+import { createTheatre, type TheatreOptions } from './theatre';
+import { createFrontinusGate, createByzantineGate, type FrontinusGateOptions, type ByzantineGateOptions } from './gate';
+import { createColonnadedStreet, type ColonnadedStreetOptions } from './colonnade';
+import { createTemple, type TempleOptions } from './temple';
+import { createAgora, type AgoraOptions } from './agora';
+import { createMartyrium, type MartyriumOptions } from './martyrium';
+import { createBaths, type BathsOptions } from './baths';
+import { createNymphaeum, type NymphaeumOptions } from './nymphaeum';
+import { createNecropolis, type NecropolisOptions } from './necropolis';
+import { createWall, type WallOptions } from './walls';
+import { createLatrine, type LatrineOptions } from './latrine';
+import { createChurch, type ChurchOptions } from './church';
 export * from './theatre';
 export * from './gate';
 export * from './colonnade';
@@ -24,12 +23,23 @@ export * from './necropolis';
 export * from './walls';
 export * from './latrine';
 export * from './church';
+export type BuilderInput = Record<string, unknown>;
 /** Wall adapter accepts {points, ...WallOptions}; all other entries use their generator options. */
-export const BUILDERS: Record<string, (o?: any) => Group> = {
-  theatre: createTheatre, frontinusGate: createFrontinusGate, byzantineGate: createByzantineGate,
-  colonnadedStreet: createColonnadedStreet, temple: createTemple, agora: createAgora,
-  martyrium: createMartyrium, baths: createBaths, nymphaeum: createNymphaeum,
-  necropolis: createNecropolis,
-  wall: (o: (WallOptions & { points?: Array<[number, number]> }) = {}) => createWall(o.points ?? [[-60, 0], [60, 0]], o),
-  latrine: createLatrine, church: createChurch,
+export const BUILDERS: Record<string, (o?: BuilderInput) => Group> = {
+  theatre: (o) => createTheatre(o as TheatreOptions),
+  frontinusGate: (o) => createFrontinusGate(o as FrontinusGateOptions),
+  byzantineGate: (o) => createByzantineGate(o as ByzantineGateOptions),
+  colonnadedStreet: (o) => createColonnadedStreet(o as ColonnadedStreetOptions),
+  temple: (o) => createTemple(o as TempleOptions),
+  agora: (o) => createAgora(o as AgoraOptions),
+  martyrium: (o) => createMartyrium(o as MartyriumOptions),
+  baths: (o) => createBaths(o as BathsOptions),
+  nymphaeum: (o) => createNymphaeum(o as NymphaeumOptions),
+  necropolis: (o) => createNecropolis(o as NecropolisOptions),
+  wall: (o: BuilderInput = {}) => {
+    const wo = o as WallOptions & { points?: Array<[number, number]> };
+    return createWall(wo.points ?? [[-60, 0], [60, 0]], wo);
+  },
+  latrine: (o) => createLatrine(o as LatrineOptions),
+  church: (o) => createChurch(o as ChurchOptions),
 };

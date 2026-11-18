@@ -288,7 +288,13 @@ function buildCity(t: Terrain): Built {
     let area = 0
     for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) area += (pts[j][0] + pts[i][0]) * (pts[j][1] - pts[i][1])
     area = Math.abs(area / 2)
+    const onPlateia = ([x, z]: V2) => {
+      const dx = x - ax, dz = z - az
+      const pu = dx * u[0] + dz * u[1], pv = dx * v[0] + dz * v[1]
+      return pu > -12 && pu < L + 12 && Math.abs(pv) < 13.6
+    }
     if (area > 9000 || area < 40 || MONUMENT_FOOTPRINTS.some((f) => f.contains(cx, cz, 4))) continue
+    if (pts.some((p) => onPlateia(p) || MONUMENT_FOOTPRINTS.some((f) => f.contains(p[0], p[1], 1.5)))) continue
     // never fill the Sacred Pool basin (its spring rises in the open)
     if (pts.some(([x, z]) => Math.hypot(x - poolX, z - poolZ) < 22) || Math.hypot(cx - poolX, cz - poolZ) < 30) continue
     const base = Math.min(...pts.map(([x, z]) => t.heightAt(x, z)))

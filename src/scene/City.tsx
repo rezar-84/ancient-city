@@ -260,43 +260,56 @@ export function City({ terrain }: { terrain: Terrain }) {
       const [px, pz] = terrain.toLocal(pool.lat, pool.lon)
       registerFootprint(new THREE.Box3(new THREE.Vector3(-17, 0, -13.5), new THREE.Vector3(17, 3, 13.5)), px, pz, 0, pool.id, pool.built, pool.until)
     }
-    // colonnaded streets
+    // colonnaded streets: precompute segment axes so adjacent sections keep intersecting porticoes clear
+    const colSegs: Array<{ ax: number; az: number; dx: number; dz: number; len: number; built: number; until?: number }> = []
     for (const st of PLAN.streets.filter((s) => s.colonnade)) {
       for (let i = 1; i < st.line.length; i++) {
         const [ax, az] = terrain.toLocal(...st.line[i - 1])
         const [bx, bz] = terrain.toLocal(...st.line[i])
         const len = Math.hypot(bx - ax, bz - az)
-        // split long segments into ~60 m pieces that each follow the slope
-        const parts = Math.max(1, Math.round(len / 60))
-        for (let k = 0; k < parts; k++) {
-          const t0 = k / parts, t1 = (k + 1) / parts
-          const cx = ax + (bx - ax) * (t0 + t1) / 2, cz = az + (bz - az) * (t0 + t1) / 2
-          const ry = Math.atan2(bx - ax, bz - az), cr = Math.cos(ry), sr = Math.sin(ry)
-          // leave the shop wall out where a monument stands right behind the portico (it opens onto the street)
-          const open = (lx: number, lz: number) => {
-            const wx = cx + lx * cr + lz * sr, wz = cz - lx * sr + lz * cr
-            return MONUMENT_FOOTPRINTS.some((f) => f.contains(wx, wz, 0.8))
-          }
-          const g = createColonnadedStreet({ length: len / parts + 0.5, open })
-          // Match the height of both road ends. A level foundation at the
-          // midpoint presents a vertical face across the gateway on a slope.
-          const y0 = terrain.heightAt(ax + (bx - ax) * t0, az + (bz - az) * t0)
-          const y1 = terrain.heightAt(ax + (bx - ax) * t1, az + (bz - az) * t1)
-          const grade = (y1 - y0) / (len / parts)
-          const incline = new THREE.Matrix4().set(
-            1, 0, 0, 0, 0, 1, grade, 0, 0, 0, 1, 0, 0, 0, 0, 1)
-          // Put the slope on a child so plan-mode scaling still acts on the whole section.
-          const section = new THREE.Group()
-          g.matrix.copy(incline)
-          g.matrixAutoUpdate = false
-          section.add(g)
-          section.position.set(cx, (y0 + y1) / 2 - 0.3, cz)
-          section.rotation.y = ry
-          shadowAll(g)
-          out.push({ obj: section, built: st.built ?? 80, until: st.until, flatten: true })
-        }
+        if (len > 0.1) colSegs.push({ ax, az, dx: (bx - ax) / len, dz: (bz - az) / len, len, built: st.built ?? 80, until: st.until })
       }
     }
+    colSegs.forEach((seg, segIdx) => {
+      const ax = seg.ax, az = seg.az, bx = ax + seg.dx * seg.len, bz = az + seg.dz * seg.len, len = seg.len
+      // split long segments into ~60 m pieces that each follow the slope
+      const parts = Math.max(1, Math.round(len / 60))
+      for (let k = 0; k < parts; k++) {
+        const t0 = k / parts, t1 = (k + 1) / parts
+        const cx = ax + (bx - ax) * (t0 + t1) / 2, cz = az + (bz - az) * (t0 + t1) / 2
+        const ry = Math.atan2(bx - ax, bz - az), cr = Math.cos(ry), sr = Math.sin(ry)
+        // leave the shop wall out where a monument stands behind the portico or another street stretch crosses
+        const open = (lx: number, lz: number) => {
+          const wx = cx + lx * cr + lz * sr, wz = cz - lx * sr + lz * cr
+          const isBackWall = Math.abs(lx) > 10
+          if (isBackWall && MONUMENT_FOOTPRINTS.some((f) => f.contains(wx, wz, 0.8))) return true
+          return colSegs.some((other, oi) => {
+            if (oi === segIdx) return false
+            const along = (wx - other.ax) * other.dx + (wz - other.az) * other.dz
+            if (along < -6 || along > other.len + 6) return false
+            const perp = Math.abs((wx - other.ax) * other.dz - (wz - other.az) * other.dx)
+            return isBackWall ? perp < 12.8 : (perp < 6.8 || (perp > 8.1 && perp < 12.5))
+          })
+        }
+        const g = createColonnadedStreet({ length: len / parts + 0.5, open })
+        // Match the height of both road ends. A level foundation at the
+        // midpoint presents a vertical face across the gateway on a slope.
+        const y0 = terrain.heightAt(ax + (bx - ax) * t0, az + (bz - az) * t0)
+        const y1 = terrain.heightAt(ax + (bx - ax) * t1, az + (bz - az) * t1)
+        const grade = (y1 - y0) / (len / parts)
+        const incline = new THREE.Matrix4().set(
+          1, 0, 0, 0, 0, 1, grade, 0, 0, 0, 1, 0, 0, 0, 0, 1)
+        // Put the slope on a child so plan-mode scaling still acts on the whole section.
+        const section = new THREE.Group()
+        g.matrix.copy(incline)
+        g.matrixAutoUpdate = false
+        section.add(g)
+        section.position.set(cx, (y0 + y1) / 2 - 0.3, cz)
+        section.rotation.y = ry
+        shadowAll(g)
+        out.push({ obj: section, built: seg.built, until: seg.until, flatten: true })
+      }
+    })
     // city walls (follow terrain)
     for (const w of PLAN.walls) {
       const pts = w.map(([la, lo]) => terrain.toLocal(la, lo))
