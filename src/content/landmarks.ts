@@ -93,7 +93,10 @@ const base: Landmark[] = [
       tr: ['İçeride iki sıra sütun', 'Kaynaklardan getirilen suyla temizlenirdi'],
     },
     images: [], sources: [{ title: 'Turkish Archaeological News — Hierapolis', url: 'https://turkisharchaeonews.net/site/hierapolis' }],
-    builder: 'latrine', rotation: 30, view: { bearing: 230, elev: 22, dist: 90 },
+    // The latrine's 40 m axis is local X; its entrance faces local +Z.
+    // Run it along the plateia with the door facing the portico. Set back the
+    // reconstructed footprint while retaining the archaeological map pin.
+    builder: 'latrine', builderOpts: { back: 6 }, rotation: -60, view: { bearing: 230, elev: 22, dist: 90 },
   },
   {
     id: 'agora',

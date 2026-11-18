@@ -24,7 +24,7 @@ export const PLAN = {
   ] as LL[][],
   streets: [
     // Plateia / Frontinus Street: Frontinus Gate -> South Byzantine Gate (bearing ~30° east of south)
-    { line: [[37.93175, 29.12199], [37.93031, 29.12307], [37.92936, 29.12372], [37.92577, 29.12641], [37.92308, 29.1284], [37.92237, 29.12886]], main: true, colonnade: true, built: 85 },
+    { line: [[37.93175, 29.12198], [37.93043, 29.12294], [37.93031, 29.12307], [37.92936, 29.12372], [37.92577, 29.12641], [37.92308, 29.1284], [37.92237, 29.12886]], main: true, colonnade: true, built: 85 },
     // road to Laodicea through the Northern Necropolis
     { line: [[37.94, 29.1195], [37.9372, 29.1203], [37.9345, 29.1204], [37.93175, 29.12199]] },
     // cross street to the theatre (schematic)
