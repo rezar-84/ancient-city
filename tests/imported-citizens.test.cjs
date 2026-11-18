@@ -115,3 +115,29 @@ test('cloth stays finite with welded seams, pinned waist and reset after telepor
   assert.ok(bounds.getSize(new THREE.Vector3()).length() < 3, 'teleport must not stretch cloth')
   citizen.dispose()
 })
+
+test('tunic rear panel clears the body at hip height on both figures', async () => {
+  const { instantiateCitizen, male, female, motions } = await setup
+  for (const model of [male, female]) {
+    const citizen = instantiateCitizen(model, motions, 'roman', palette())
+    let body
+    model.scene.traverse(o => {
+      if (o.isSkinnedMesh && (!body || o.geometry.getAttribute('position').count > body.geometry.getAttribute('position').count)) body = o
+    })
+    const vertices = body.geometry.getAttribute('position')
+    let rearBody = Infinity
+    for (let i = 0; i < vertices.count; i++) {
+      const y = vertices.getY(i)
+      if (y > 0.72 && y < 0.93 && Math.abs(vertices.getX(i)) < 0.23)
+        rearBody = Math.min(rearBody, vertices.getZ(i))
+    }
+    const garment = citizen.root.getObjectByName('SimulatedTunic').geometry.getAttribute('position')
+    let rearCloth = Infinity
+    for (let i = 0; i < garment.count; i++) {
+      const y = garment.getY(i)
+      if (y > 0.72 && y < 0.93) rearCloth = Math.min(rearCloth, garment.getZ(i))
+    }
+    assert.ok(rearCloth < rearBody - 0.05, `rear cloth must cover the hip: ${rearCloth} < ${rearBody}`)
+    citizen.dispose()
+  }
+})

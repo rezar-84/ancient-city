@@ -12,6 +12,7 @@ import { gridFrame, stallSpots } from './spots'
 import { walk } from './WalkControls'
 import { WorldProbe } from './physics'
 import { createRiggedCitizen, loadCitizenAssets } from './riggedCitizen'
+import { MarketSheep } from './MarketSheep'
 
 type Variant = 'greek' | 'roman' | 'byzantine'
 const variantFor = (year: number): Variant => (year < -133 ? 'greek' : year < 330 ? 'roman' : 'byzantine')
@@ -328,6 +329,7 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
       {sim.closePeople.map((slot, i) => <primitive key={i} object={slot.citizen.root} />)}
       <primitive object={sim.horses} />
       <primitive object={sim.cartMesh} />
+      {mode === 'walk' && <MarketSheep terrain={terrain} year={year} />}
     </group>
   )
 }

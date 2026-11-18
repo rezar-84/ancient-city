@@ -74,15 +74,18 @@ function makeOutfit(body: THREE.SkinnedMesh, era: Era, palette: Palette) {
   const p = top.getAttribute('position'), normals = top.getAttribute('normal')
   for (let i = 0; i < p.count; i++) p.setXYZ(i, p.getX(i) + normals.getX(i) * 0.018, p.getY(i) + normals.getY(i) * 0.018, p.getZ(i) + normals.getZ(i) * 0.018)
   const hem = era === 'greek' ? 0.35 : era === 'roman' ? 0.31 : 0.18
-  const skirt = new THREE.CylinderGeometry(height * 0.12, height * 0.19, height * (0.58 - hem), 24, 5, true)
-    .translate(0, height * (0.58 + hem) / 2, 0)
+  // The original narrow, flattened tube cut through the hips and exposed the
+  // back of the body when a thigh moved. Give the waist an overlap with the
+  // fitted bodice and leave room around the seat and both moving legs.
+  const skirt = new THREE.CylinderGeometry(height * 0.15, height * 0.23, height * (0.61 - hem), 24, 5, true)
+    .translate(0, height * (0.61 + hem) / 2, 0)
   const sp = skirt.getAttribute('position'), si = new Uint16Array(sp.count * 4), sw = new Float32Array(sp.count * 4)
   const pelvis = body.skeleton.bones.findIndex(b => b.name === 'pelvis')
   const left = body.skeleton.bones.findIndex(b => b.name === 'thigh_l'), right = body.skeleton.bones.findIndex(b => b.name === 'thigh_r')
   for (let i = 0; i < sp.count; i++) {
     const x = sp.getX(i), y = sp.getY(i), z = sp.getZ(i), fold = 1 + Math.cos(Math.atan2(z, x) * 12) * 0.025
-    sp.setXYZ(i, x * fold, y, z * fold * 0.72)
-    const leg = THREE.MathUtils.clamp((height * 0.58 - y) / height, 0, 0.35)
+    sp.setXYZ(i, x * fold, y, z * fold * 0.96)
+    const leg = THREE.MathUtils.clamp((height * 0.61 - y) / height, 0, 0.24)
     // Blend across the centre so adjacent skirt vertices cannot split along a leg seam.
     const blend = THREE.MathUtils.smoothstep(x, -height * 0.12, height * 0.12)
     si[i * 4] = pelvis; si[i * 4 + 1] = left; si[i * 4 + 2] = right
@@ -90,9 +93,9 @@ function makeOutfit(body: THREE.SkinnedMesh, era: Era, palette: Palette) {
   }
   skirt.computeVertexNormals(); skirt.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4)); skirt.setAttribute('skinWeight', new THREE.Float32BufferAttribute(sw, 4))
   source.dispose()
-  const cloth = new THREE.MeshStandardMaterial({ color: palette.cloth, roughness: 0.95, side: THREE.DoubleSide })
+  const cloth = new THREE.MeshStandardMaterial({ color: palette.cloth, roughness: 0.88, side: THREE.DoubleSide })
   const trim = new THREE.MeshStandardMaterial({ color: palette.accent, roughness: 0.85, side: THREE.DoubleSide })
-  const belt = new THREE.CylinderGeometry(height * 0.125, height * 0.126, 0.045, 24, 1, true).scale(1, 1, 0.73).translate(0, height * 0.58, 0)
+  const belt = new THREE.CylinderGeometry(height * 0.151, height * 0.151, 0.045, 24, 1, true).scale(1, 1, 0.96).translate(0, height * 0.605, 0)
   const bi = new Uint16Array(belt.getAttribute('position').count * 4), bw = new Float32Array(bi.length)
   for (let i = 0; i < bi.length; i += 4) { bi[i] = pelvis; bw[i] = 1 }
   belt.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(bi, 4)); belt.setAttribute('skinWeight', new THREE.Float32BufferAttribute(bw, 4))
@@ -129,6 +132,7 @@ function secondaryMotion(root: THREE.Group, skirt: THREE.SkinnedMesh) {
   const lastRoot = new THREE.Vector3(), inverse = new THREE.Matrix4()
   const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), direction = new THREE.Vector3(), bend = new THREE.Vector3(), knee = new THREE.Vector3(), target = new THREE.Vector3()
   const rotation = new THREE.Quaternion(), parentRotation = new THREE.Quaternion(), worldRotation = new THREE.Quaternion()
+  const pelvis = root.getObjectByName('pelvis')!, seat = new THREE.Vector3(), seatLocal = new THREE.Vector3(), inverseRootRotation = new THREE.Quaternion()
   function aim(bone: THREE.Object3D, child: THREE.Object3D, point: THREE.Vector3) {
     bone.getWorldPosition(a); child.getWorldPosition(b)
     b.sub(a).normalize(); c.copy(point).sub(a).normalize()
@@ -179,6 +183,8 @@ function secondaryMotion(root: THREE.Group, skirt: THREE.SkinnedMesh) {
       }
       edges.forEach(([i, j], index) => { restLengths[index] = targets[i].distanceTo(targets[j]) })
       legs.forEach(leg => { leg.thigh.getWorldPosition(leg.hip); leg.foot.getWorldPosition(leg.ankle) })
+      pelvis.getWorldPosition(seat)
+      root.getWorldQuaternion(inverseRootRotation).invert()
       if (!ready || lastRoot.distanceToSquared(root.position) > 1) {
         particles.forEach((p, i) => { p.copy(targets[i]); previous[i].copy(p) }); ready = true
       }
@@ -213,6 +219,14 @@ function secondaryMotion(root: THREE.Group, skirt: THREE.SkinnedMesh) {
               a.addScaledVector(b, t); c.copy(p).sub(a)
               const radius = 0.085 * root.scale.x
               if (c.lengthSq() < radius * radius) p.copy(a).add(c.lengthSq() > 1e-8 ? c.setLength(radius) : c.set(radius, 0, 0))
+            }
+            // Keep the rear panel outside the pelvis as the thighs rotate.
+            seatLocal.copy(p).sub(seat).applyQuaternion(inverseRootRotation)
+            const sx = seatLocal.x / (0.18 * root.scale.x), sy = seatLocal.y / (0.18 * root.scale.y), sz = seatLocal.z / (0.16 * root.scale.z)
+            const radiusSq = sx * sx + sy * sy + sz * sz
+            if (radiusSq < 1) {
+              seatLocal.multiplyScalar(1 / Math.sqrt(Math.max(radiusSq, 1e-6))).applyQuaternion(root.quaternion)
+              p.copy(seat).add(seatLocal)
             }
           }
         }

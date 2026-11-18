@@ -29,7 +29,7 @@ const terrainPromise = loadTerrain()
 patchFogChunks()
 const PostFX = lazy(() => import('./PostFX'))
 
-const SHADOW_RES = isLight ? 2048 : 4096
+const SHADOW_RES = isLight ? 1536 : 3072
 /** ?fx=0 / ?fx=1 forces the post-processing tier off/on (testing). */
 const fxParam = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('fx') : null
 
@@ -95,8 +95,8 @@ function Lights() {
     const walking = useApp.getState().mode === 'walk'
     if (walking) tgt.current.set(walk.x, walk.feet, walk.z)
     else tgt.current.copy(ctl.target)
-    const d = walking ? 100 : cam.position.distanceTo(ctl.target)
-    const ext = THREE.MathUtils.clamp(d * 0.62, 70, 1100)
+    const d = walking ? 75 : cam.position.distanceTo(ctl.target)
+    const ext = THREE.MathUtils.clamp(d * 0.55, walking ? 45 : 60, 1000)
     const sc = l.shadow.camera
     if (Math.abs(sc.right - ext) > ext * 0.08) {
       sc.left = -ext; sc.right = ext; sc.top = ext; sc.bottom = -ext; sc.updateProjectionMatrix()
