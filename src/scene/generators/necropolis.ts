@@ -28,19 +28,32 @@ export function createNecropolis(o: NecropolisOptions = {}): THREE.Group {
       new THREE.ConeGeometry(1, 3.5, 12).translate(0, 3.25, 0),
     ]) },
     { type: 'sarcophagus', count: sarcophagi, radius: 1.5, geometry: () => combine([
-      new THREE.BoxGeometry(2.8, 3.3, 1.6).translate(0, -1.35, 0),
-      new THREE.BoxGeometry(2.4, 1.4, 1.2).translate(0, 1, 0),
-      gable(1.5, 0.45, 2.7).rotateY(Math.PI / 2).translate(0, 1.7, 0),
+      new THREE.BoxGeometry(2.8, 3.3, 1.6).translate(0, -1.5, 0),
+      new THREE.BoxGeometry(2.55, 0.22, 1.35).translate(0, 0.26, 0),
+      new THREE.BoxGeometry(2.4, 1.3, 1.2).translate(0, 1.02, 0),
+      // Tabula ansata inscription panel & corner lid acroteria
+      new THREE.BoxGeometry(0.95, 0.55, 1.26).translate(0, 1.05, 0),
+      gable(1.5, 0.45, 2.7).rotateY(Math.PI / 2).translate(0, 1.67, 0),
+      new THREE.BoxGeometry(0.24, 0.26, 0.24).translate(-1.2, 1.82, 0.64),
+      new THREE.BoxGeometry(0.24, 0.26, 0.24).translate(1.2, 1.82, 0.64),
+      new THREE.BoxGeometry(0.24, 0.26, 0.24).translate(-1.2, 1.82, -0.64),
+      new THREE.BoxGeometry(0.24, 0.26, 0.24).translate(1.2, 1.82, -0.64),
     ]) },
     { type: 'houseTomb', count: houseTombs, radius: 3.7, geometry: () => combine([
-      new THREE.BoxGeometry(4.2, 3.3, 6.2).translate(0, -1.35, 0),
-      new THREE.BoxGeometry(0.4, 3.5, 6).translate(-1.8, 2.05, 0),
-      new THREE.BoxGeometry(0.4, 3.5, 6).translate(1.8, 2.05, 0),
-      new THREE.BoxGeometry(4, 3.5, 0.4).translate(0, 2.05, -2.8),
-      new THREE.BoxGeometry(1.3, 3.5, 0.4).translate(-1.35, 2.05, 2.8),
-      new THREE.BoxGeometry(1.3, 3.5, 0.4).translate(1.35, 2.05, 2.8),
-      new THREE.BoxGeometry(1.4, 1.1, 0.4).translate(0, 3.25, 2.8),
-      gable(4.5, 1.3, 6.5).translate(0, 3.8, 0),
+      // Foundation top at y = +0.16 with front threshold step so the 1.4×2.7 m chamber doorway is walkable!
+      new THREE.BoxGeometry(4.2, 3.16, 6.2).translate(0, -1.42, 0),
+      new THREE.BoxGeometry(2.0, 1.6, 0.55).translate(0, -0.82, 3.35),
+      new THREE.BoxGeometry(0.4, 3.5, 6).translate(-1.8, 1.91, 0),
+      new THREE.BoxGeometry(0.4, 3.5, 6).translate(1.8, 1.91, 0),
+      new THREE.BoxGeometry(4, 3.5, 0.4).translate(0, 1.91, -2.8),
+      new THREE.BoxGeometry(1.3, 3.5, 0.4).translate(-1.35, 1.91, 2.8),
+      new THREE.BoxGeometry(1.3, 3.5, 0.4).translate(1.35, 1.91, 2.8),
+      new THREE.BoxGeometry(1.4, 0.95, 0.4).translate(0, 3.18, 2.8),
+      new THREE.BoxGeometry(1.9, 0.18, 0.54).translate(0, 2.75, 2.82),
+      // Interior stone funerary klinai benches along side walls
+      new THREE.BoxGeometry(0.68, 0.48, 3.8).translate(-1.26, 0.40, -0.4),
+      new THREE.BoxGeometry(0.68, 0.48, 3.8).translate(1.26, 0.40, -0.4),
+      gable(4.5, 1.3, 6.5).translate(0, 3.66, 0),
     ]) },
   ];
   const occupied: Array<{ x: number; z: number; r: number }> = [];

@@ -133,10 +133,12 @@ export function setMusic(id: string | null, fade = 3) {
 
 // ---- voices -------------------------------------------------------------------------------
 let voiceSrc: AudioBufferSourceNode | null = null
+let voiceGen = 0
 const voiceListeners = new Set<(v: VoiceLine | null) => void>()
 export function onVoice(fn: (v: VoiceLine | null) => void) { voiceListeners.add(fn); return () => { voiceListeners.delete(fn) } }
 
 export function stopVoice() {
+  voiceGen++
   if (voiceSrc) { try { voiceSrc.stop() } catch { /* already stopped */ } voiceSrc = null }
   voiceListeners.forEach((f) => f(null))
 }
@@ -145,12 +147,13 @@ export async function playVoice(id: string) {
   const v = VOICES.find((x) => x.id === id)
   if (!v || !ensureAudio() || settings.voices <= 0) return
   stopVoice()
+  const gen = voiceGen
   const buf = await load(`/audio/voices/${id}.mp3`)
-  if (!buf || !ctx) return
+  if (!buf || !ctx || gen !== voiceGen) return
   const src = ctx.createBufferSource(); src.buffer = buf
   const dry = ctx.createGain(); dry.gain.value = 0.8
   src.connect(dry).connect(bus.voices); src.connect(reverb)
-  src.onended = () => { if (voiceSrc === src) { voiceSrc = null; voiceListeners.forEach((f) => f(null)) } }
+  src.onended = () => { dry.disconnect(); src.disconnect(); if (voiceSrc === src) { voiceSrc = null; voiceListeners.forEach((f) => f(null)) } }
   src.start(); voiceSrc = src
   voiceListeners.forEach((f) => f(v))
 }

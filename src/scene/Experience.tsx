@@ -68,7 +68,7 @@ function Lights() {
     // linear range drives the custom height fog (Effects.patchFogChunks): aerial perspective from ~500 m
     fog.current = new THREE.Fog(SKY.haze.clone(), 500, 9000)
     scene.fog = fog.current
-    return () => { scene.fog = null }
+    return () => { scene.remove(l.target); scene.fog = null }
   }, [scene])
   // shadow frustum follows the orbit target and tightens as the camera comes closer -> crisp close-up shadows
   const tgt = useRef(new THREE.Vector3())

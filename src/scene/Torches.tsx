@@ -35,6 +35,14 @@ function torchSpots(t: Terrain, year: number, gated: boolean) {
     const fx = Math.sin(s.yaw + Math.PI), fz = Math.cos(s.yaw + Math.PI)
     const rx = fz, rz = -fx
     for (const side of [-1, 1]) add(s.x - fx * 3 + rx * 2.6 * side, s.z - fz * 3 + rz * 2.6 * side)
+    // Interior oil-lamp / brazier glow inside covered civic & sacred halls for atmospheric dusk/night walkthroughs
+    if (['latrine', 'baths', 'cathedral', 'martyrium', 'philip-church', 'apollo'].includes(l.id)) {
+      const [lx, lz] = t.toLocal(l.lat, l.lon)
+      const yaw = THREE.MathUtils.degToRad(l.rotation ?? 0)
+      const back = Number(l.builderOpts?.back ?? 0)
+      const cx = lx - Math.sin(yaw) * back, cz = lz - Math.cos(yaw) * back
+      out.push([cx, t.heightAt(cx, cz) + (l.id === 'apollo' ? 2.5 : 0.6), cz])
+    }
   }
   return out
 }

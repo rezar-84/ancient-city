@@ -148,20 +148,28 @@ export function buildWater(t: Terrain): { group: THREE.Group; volumes: WaterVolu
   const [px, pz] = t.toLocal(37.92615, 29.12558), sy = t.heightAt(px, pz) + 0.15;
   const pool: WaterVolume = { id: 'antique-pool', kind: 'pool', polygon: polygon(px, pz, 15, 11, 0.8), surfaceY: sy, floorY: sy - 1.9 };
   volumes.push(pool); group.add(new THREE.Mesh(basin(pool, px, pz, 1.9, stone), createWaterMaterial({ kind: 'pool', fizz: true })));
-  stone.box('marble', 27, 0.45, 2.2, px, sy + 0.025, pz - 11.8);
+  // Separate standing Imperial portico (AD 80–619) from 7th-century earthquake-toppled columns (AD 620+ / Today)
+  const standingPortico = new Building('Sacred Pool standing portico');
+  const fallenDebris = new Building('Sacred Pool earthquake debris');
+  standingPortico.box('marble', 27, 0.45, 2.2, px, sy + 0.025, pz - 11.8);
+  standingPortico.box('marble', 27.4, 0.42, 2.0, px, sy + 4.95, pz - 11.8);
+  for (let i = 0; i < 7; i++) {
+    standingPortico.add('marble', column(4.5, 0.28), { x: px - 12 + i * 4, y: sy + 0.25, z: pz - 11.8 });
+  }
+  fallenDebris.box('marble', 27, 0.45, 2.2, px, sy + 0.025, pz - 11.8);
   for (let i = 0; i < 9; i++) {
     const g = column(4.5, 0.28);
-    if (i < 3) stone.add('marble', g, { x: px - 10 + i * 9, y: sy + 0.25, z: pz - 11.8 });
+    if (i < 3) fallenDebris.add('marble', g, { x: px - 10 + i * 9, y: sy + 0.25, z: pz - 11.8 });
     else {
       const x = px - 9 + (i - 3) * 3.1, z = pz - 4 + Math.sin(i * 2.4) * 2;
       g.rotateZ(Math.PI / 2).rotateY(i * 2.399);
-      stone.add('marble', g, { x, y: floorAt(pool, x, z) + 0.43, z });
+      fallenDebris.add('marble', g, { x, y: floorAt(pool, x, z) + 0.43, z });
     }
   }
   for (let i = 0; i < 8; i++) {
     const x = px - 8 + i * 2, z = pz + 3 + Math.sin(i) * 2, y = floorAt(pool, x, z);
-    stone.add('marble', new THREE.CylinderGeometry(0.3, 0.3, 0.55, 12).rotateZ(0.6), { x, y: y + 0.35, z });
-    if (i % 2 === 0) stone.box('marble', 0.85, 0.22, 0.85, x + 0.6, y + 0.16, z + 0.5, i);
+    fallenDebris.add('marble', new THREE.CylinderGeometry(0.3, 0.3, 0.55, 12).rotateZ(0.6), { x, y: y + 0.35, z });
+    if (i % 2 === 0) fallenDebris.box('marble', 0.85, 0.22, 0.85, x + 0.6, y + 0.16, z + 0.5, i);
   }
   const [tx, tz] = t.toLocal(37.9236, 29.1212);
   for (let row = 0; row < 10; row++) for (let col = 0; col < 6; col++) {
@@ -188,10 +196,16 @@ export function buildWater(t: Terrain): { group: THREE.Group; volumes: WaterVolu
   group.add(new THREE.Mesh(combine(terraces), createWaterMaterial({ kind: 'terrace' })));
   if (sheets.length) group.add(new THREE.Mesh(combine(sheets), createWaterMaterial({ kind: 'sheet' })));
   const masonry = stone.finish();
+  const porticoGroup = standingPortico.finish();
+  const debrisGroup = fallenDebris.finish();
   // Clone shared materials: City may patch originals; ownership remains local and disposable.
-  masonry.traverse(o => { if (o instanceof THREE.Mesh) { o.material = (o.material as THREE.MeshStandardMaterial).clone(); if (o.name === 'travertine') o.material.color.set('#f7f5ed'); } });
-  group.add(masonry);
+  for (const sub of [masonry, porticoGroup, debrisGroup]) {
+    sub.traverse(o => { if (o instanceof THREE.Mesh) { o.material = (o.material as THREE.MeshStandardMaterial).clone(); if (o.name === 'travertine') o.material.color.set('#f7f5ed'); } });
+  }
+  porticoGroup.visible = false;
+  group.add(masonry, porticoGroup, debrisGroup);
   const steam = createSteam([new THREE.Vector3(px, sy, pz)], 48); group.add(steam.mesh);
   group.userData.uSteam = steam.uSteam;
+  group.userData.poolPhases = { porticoGroup, debrisGroup };
   return { group, volumes };
 }

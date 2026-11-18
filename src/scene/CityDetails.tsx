@@ -4,7 +4,7 @@ import * as THREE from 'three'
 import type { Terrain } from './terrainData'
 import { getMaterials } from './materials'
 import { altar, amphoraStack, bench, lampPost, marketStall, milestone, parkedCart, statueOnPedestal, streetFountain, type PropParts } from './generators/props'
-import { createFoliageMaterial, cypress, grassTuft, olive, patchSwayMaterial, plane, type VegetationParts } from './generators/vegetation'
+import { createFoliageMaterial, cypress, grassTuft, olive, patchSwayMaterial, plane, shrub, type VegetationParts } from './generators/vegetation'
 import { GRID } from '../content/grid'
 import { PLAN } from '../content/plan'
 import { LANDMARKS } from '../content/landmarks'
@@ -35,6 +35,7 @@ const foliage = {
   cypress: createFoliageMaterial('#34431f'),
   olive: createFoliageMaterial('#7b8a5f'),
   plane: createFoliageMaterial('#56702f'),
+  shrub: createFoliageMaterial('#5d6e3f'),
   grass: (() => { const m = createFoliageMaterial('#8d8a52'); patchSwayMaterial(m); return m })(),
 }
 
@@ -130,14 +131,23 @@ export function CityDetails({ terrain }: { terrain: Terrain }) {
       for (let k = 0; k < 3 && oli.length < 420; k++) oli.push({ x: x + (rand() - 0.5) * 18, z: z + (rand() - 0.5) * 18, yaw: rand() * 6.28, s: 0.75 + rand() * 0.5 })
     }
     if (stands('agora')) { const [ax, az] = at('agora'); for (let i = 0; i < 8; i++) pla.push({ x: ax + (rand() - 0.5) * 120, z: az + (rand() - 0.5) * 120, yaw: rand() * 6.28, s: 0.9 + rand() * 0.3 }) }
+    // Native Mediterranean mastic & oleander scrub around thermal edges, sanctuary approaches, and outer slopes
+    const shr: Place[] = []
+    for (let n = 0; n < 320 && shr.length < 160; n++) {
+      const a = rand() * Math.PI * 2, r = 120 + rand() * 680
+      const x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r
+      if (onStreet(x, z) || waterHere(x, z) || inPoly(x, z, trav)) continue
+      shr.push({ x, z, yaw: rand() * 6.28, s: 0.75 + rand() * 0.65 })
+    }
     out.push(...instanced(cypress(), cyp, terrain, foliage.cypress))
     out.push(...instanced(olive(), oli, terrain, foliage.olive))
     out.push(...instanced(plane(), pla, terrain, foliage.plane))
+    out.push(...instanced(shrub(), shr, terrain, foliage.shrub, false))
     return out
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [terrain, showGrid, mode === 'walk', yr])
 
-  useEffect(() => () => meshes.forEach((m) => m.dispose()), [meshes])
+  useEffect(() => () => meshes.forEach((m) => { m.geometry.dispose(); m.dispose() }), [meshes])
 
   // grass tufts recycled around the walker
   const grass = useMemo(() => {

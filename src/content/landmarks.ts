@@ -89,8 +89,8 @@ const base: Landmark[] = [
       tr: 'Frontinus Kapısı’nın hemen içinde uzun bir umumi tuvalet bulunuyordu. Mermer oturaklar akan su kanalının üzerinde duvar boyunca dizilir, iki sıra sütun çatıyı taşırdı — Roma kent yaşamının şaşırtıcı derecede toplumsal olduğunun bir hatırlatıcısı.',
     },
     facts: {
-      en: ['Two internal rows of columns', 'Flushed by water channelled from the springs'],
-      tr: ['İçeride iki sıra sütun', 'Kaynaklardan getirilen suyla temizlenirdi'],
+      en: ['Two internal rows of Doric columns; surveyed ruins ~20–24 × 6–9 m (40 × 10 m civic reconstruction)', 'Flushed continuously by spring water through a perimeter euripus channel'],
+      tr: ['İçeride iki sıra Dor sütunu; ölçülen kalıntı ~20–24 × 6–9 m (40 × 10 m rekonstrüksiyon)', 'Çevresel euripus kanalından geçen kaynak suyuyla sürekli temizlenirdi'],
     },
     images: [], sources: [{ title: 'Turkish Archaeological News — Hierapolis', url: 'https://turkisharchaeonews.net/site/hierapolis' }],
     // The latrine's 40 m axis is local X; its entrance faces local +Z.
@@ -167,23 +167,23 @@ const base: Landmark[] = [
     id: 'cathedral',
     name: { en: 'Cathedral', tr: 'Katedral' },
     lat: 37.92938, lon: 29.12464,
-    category: 'christian', built: 520, until: 1354, period: { en: 'Byzantine · 6th century', tr: 'Bizans · 6. yüzyıl' },
+    category: 'christian', built: 500, until: 1354, period: { en: 'Byzantine · early 6th century', tr: 'Bizans · 6. yüzyıl başı' },
     summary: {
       en: 'As Hierapolis became a Christian bishopric, a large basilica with a nave and two aisles, plus a baptistery, rose just east of the main street. Pilgrims on their way to the shrine of St Philip passed through this Christian heart of the city.',
       tr: 'Hierapolis bir piskoposluk merkezi olunca, ana caddenin hemen doğusunda bir orta nef ve iki yan neften oluşan büyük bir bazilika ile bir vaftizhane yükseldi. Aziz Philippos türbesine giden hacılar kentin bu Hristiyan merkezinden geçerdi.',
     },
     facts: {
-      en: ['Three-aisled basilica with an apse to the east', 'Baptistery nearby'],
-      tr: ['Doğuda apsisli üç nefli bazilika', 'Yakınında vaftizhane'],
+      en: ['Three-aisled basilica (~49 × 25 m) with a synthronon apse to the east and marble templon screen', 'Baptistery and atrium complex nearby'],
+      tr: ['Doğuda synthrononlu apsisi ve mermer templon bölmesiyle üç nefli bazilika (~49 × 25 m)', 'Yakınında vaftizhane ve atrium kompleksi'],
     },
     images: [], sources: [{ title: 'Wikipedia — Hierapolis', url: 'https://en.wikipedia.org/wiki/Hierapolis' }],
-    builder: 'church', builderOpts: { width: 30, length: 50 }, rotation: 30, view: { bearing: 200, elev: 24, dist: 130 },
+    builder: 'church', builderOpts: { width: 25, length: 49 }, rotation: 30, view: { bearing: 200, elev: 24, dist: 130 },
   },
   {
     id: 'antique-pool',
     name: { en: 'Antique (Sacred) Pool', tr: 'Antik Havuz' },
     lat: 37.92615, lon: 29.12558,
-    category: 'nature', built: -100, period: { en: 'Sacred spring', tr: 'Kutsal kaynak' },
+    category: 'nature', built: -200, period: { en: 'Sacred spring', tr: 'Kutsal kaynak' },
     summary: {
       en: 'The thermal spring that feeds the travertines rises here, inside the sacred area of Apollo. Earthquakes toppled the marble columns of a portico into the water, and today visitors still swim among them in the warm, fizzy spring water.',
       tr: 'Travertenleri besleyen termal kaynak burada, Apollon’un kutsal alanı içinde yükselir. Depremler bir revakın mermer sütunlarını suya devirdi; bugün ziyaretçiler hâlâ sıcak ve gazlı kaynak suyunda bu sütunların arasında yüzer.',
@@ -200,17 +200,17 @@ const base: Landmark[] = [
     id: 'apollo',
     name: { en: 'Temple of Apollo', tr: 'Apollon Tapınağı' },
     lat: 37.92695, lon: 29.12675,
-    category: 'sacred', built: 200, until: 400, period: { en: 'Roman (on Hellenistic foundations)', tr: 'Roma (Helenistik temeller üzerinde)' },
+    category: 'sacred', built: -180, until: 400, period: { en: 'Hellenistic sanctuary – Roman rebuild', tr: 'Helenistik kutsal alan – Roma yenilemesi' },
     summary: {
       en: 'Apollo Archegetes — “the founder” — was the chief god of Hierapolis, and his temple stood in a sanctuary at the heart of the city, right above the cave of the Ploutonion. Here the god’s oracle was consulted; the visible remains date to the 3rd century AD.',
       tr: 'Apollon Arkhegetes — “kurucu” — Hierapolis’in baş tanrısıydı; tapınağı kentin kalbindeki kutsal alanda, Plutonion mağarasının hemen üstünde yükselirdi. Tanrının kehanet merkezine burada danışılırdı; görülen kalıntılar MS 3. yüzyıla aittir.',
     },
     facts: {
-      en: ['Temple on a high podium reached by a stair', 'Oracle inscriptions found in the sanctuary'],
-      tr: ['Merdivenle çıkılan yüksek podyum üzerinde tapınak', 'Kutsal alanda kehanet yazıtları bulundu'],
+      en: ['Temple (~24 × 18 m within a ~60 × 60 m peribolos) on a high stepped podium', 'Alphabetical and verse oracle inscriptions found in the sanctuary'],
+      tr: ['~60 × 60 m peribolos içinde yüksek basamaklı podyum üzerinde ~24 × 18 m tapınak', 'Kutsal alanda alfabetik kehanet yazıtları bulundu'],
     },
     images: [], sources: [{ title: 'Wikipedia — Hierapolis', url: 'https://en.wikipedia.org/wiki/Hierapolis' }],
-    builder: 'temple', builderOpts: { width: 18, length: 30, columnHeight: 9 }, rotation: -60, view: { bearing: 240, elev: 24, dist: 120 },
+    builder: 'temple', builderOpts: { width: 18, length: 26, columnHeight: 9 }, rotation: -60, view: { bearing: 240, elev: 24, dist: 120 },
   },
   {
     id: 'ploutonion',
@@ -227,7 +227,7 @@ const base: Landmark[] = [
     },
     didYouKnow: { en: 'Scientists measured CO₂ concentrations high enough to kill a bull within minutes — but only close to the ground, which explains how the tall priests survived.', tr: 'Bilim insanları bir boğayı dakikalar içinde öldürecek CO₂ yoğunlukları ölçtü — ama yalnızca yere yakın; bu da uzun boylu rahiplerin nasıl hayatta kaldığını açıklar.' },
     images: [], sources: [{ title: 'Wikipedia — Ploutonion at Hierapolis', url: 'https://en.wikipedia.org/wiki/Ploutonion_at_Hierapolis' }, { title: 'D’Andria, “The Ploutonion of Hierapolis in light of recent research (2013–17)”', url: 'https://www.academia.edu/117925833/The_Ploutonion_of_Hierapolis_in_light_of_recent_research_2013_17_' }],
-    builder: 'temple', builderOpts: { width: 9, length: 13, columnHeight: 5, frontColumns: 4, podiumHeight: 1.5 }, rotation: 120, view: { bearing: 210, elev: 28, dist: 80 }, pinHeight: 16,
+    builder: 'temple', builderOpts: { width: 9, length: 13, columnHeight: 5, frontColumns: 4, podiumHeight: 1.5, grotto: true }, rotation: 120, view: { bearing: 210, elev: 28, dist: 80 }, pinHeight: 16,
   },
   {
     id: 'theatre',
@@ -245,7 +245,7 @@ const base: Landmark[] = [
     didYouKnow: { en: 'An earlier Hellenistic theatre stood north of the city; this “new” theatre replaced it in Roman times.', tr: 'Kentin kuzeyinde daha eski bir Helenistik tiyatro vardı; bu “yeni” tiyatro Roma döneminde onun yerini aldı.' },
     disputed: { en: 'Capacity estimates range from 10,000 to 15,000, and the popular claim that it was finished for Hadrian’s visit in AD 129 is not securely attested.', tr: 'Kapasite tahminleri 10.000 ile 15.000 arasında değişir; Hadrianus’un MS 129 ziyareti için bitirildiği iddiası kesin olarak kanıtlanmış değildir.' },
     images: [], sources: [{ title: 'Wikipedia — Hierapolis', url: 'https://en.wikipedia.org/wiki/Hierapolis' }, { title: 'World History Encyclopedia — Roman Theatre of Hierapolis', url: 'https://www.worldhistory.org/image/3834/roman-theatre-of-hierapolis/' }, { title: 'Ancient Theatre Archive — Hierapolis', url: 'https://www.whitman.edu/theatre/theatretour/hierapolis/commentary/hierapolis.commentary.htm' }],
-    builder: 'theatre', rotation: -97, view: { bearing: 255, elev: 42, dist: 210 },
+    builder: 'theatre', builderOpts: { outerRadius: 51.5, orchestraRadius: 10.8, rows: 50, stageWidth: 70 }, rotation: -97, view: { bearing: 255, elev: 42, dist: 210 },
     model: { glb: '/models/theatre.glb', usdz: '/models/theatre.usdz', credit: 'Hierapolis Theatre 3D model' },
   },
   {
@@ -275,12 +275,12 @@ const base: Landmark[] = [
       tr: '2011’de kazı ekibi, Martyrion’un altındaki üç nefli bir kilisenin içinde bulunan Roma dönemi mezarının Bizans hacılarınca saygı gösterilen Havari Philippos’un mezarı olduğunu duyurdu. Hacıların bronz mühürleri ve mezarın çevresine inşa edilen kilise bunun önemli bir türbe olduğunu destekler.',
     },
     facts: {
-      en: ['Discovery announced by Prof. Francesco D’Andria in 2011', 'A church was built around the earlier Roman tomb'],
-      tr: ['Keşif 2011’de Prof. Francesco D’Andria tarafından duyuruldu', 'Daha eski Roma mezarının çevresine bir kilise inşa edildi'],
+      en: ['Discovery announced by Prof. Francesco D’Andria in 2011', 'Three-aisled basilica (~31 × 20 m) built around the earlier 3.5 × 4 m Roman tomb'],
+      tr: ['Keşif 2011’de Prof. Francesco D’Andria tarafından duyuruldu', 'Daha eski 3,5 × 4 m Roma mezarının çevresine üç nefli bazilika (~31 × 20 m) inşa edildi'],
     },
     disputed: { en: 'That this is Philip’s actual tomb is the excavator’s interpretation based on pilgrimage evidence; the tomb was empty and the claim cannot be proven scientifically.', tr: 'Bunun gerçekten Philippos’un mezarı olduğu, kazı başkanının hac kanıtlarına dayanan yorumudur; mezar boştu ve iddia bilimsel olarak kanıtlanamaz.' },
     images: [], sources: [{ title: 'Wikipedia — Hierapolis', url: 'https://en.wikipedia.org/wiki/Hierapolis' }],
-    builder: 'church', builderOpts: { width: 20, length: 36 }, rotation: 30, view: { bearing: 230, elev: 26, dist: 120 },
+    builder: 'church', builderOpts: { width: 20, length: 32, tombChamber: true }, rotation: 30, view: { bearing: 230, elev: 26, dist: 120 },
   },
   {
     id: 'south-gate',

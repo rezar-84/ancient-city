@@ -37,11 +37,12 @@ export function createNymphaeum(o: NymphaeumOptions = {}): THREE.Group {
     for (let i = 0; i < 7; i++) {
       const bx = -w / 2 + 5 + i * (w - 10) / 6;
       b.add('limestone', arch(2.5, h / 2 - 1, 0.25, 0.35), { x: bx, y, z: back + 0.8 });
-      // statue on a moulded pedestal in every bay, framed by a small aedicula
+      // statue on a moulded pedestal in every bay, framed by a small aedicula with alternating pediments & Triton frieze
       b.box('marble', 1.3, 0.9, 1.0, bx, y + 0.45, back + 1.15);
       b.box('marble', 1.5, 0.12, 1.15, bx, y + 0.94, back + 1.15);
       b.add('marble', statue(1.12, (i + tier) % 2 ? 'greek' : 'roman'), { x: bx, y: y + 1.0, z: back + 1.15, ry: (i - 3) * 0.06 });
       b.box('marble', 2.2, 0.35, 0.45, bx, y + h / 2 - 1.6, back + 1.0);
+      if (tier === 0) b.box('travertine', 2.4, 0.42, 0.14, bx, h / 2 + 0.32, back + 2.68);
     }
   }
   // central group (the tritons and sea creatures that named the fountain): a raised plinth with three figures

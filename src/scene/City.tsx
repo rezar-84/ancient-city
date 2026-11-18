@@ -207,10 +207,6 @@ function shadowAll(o: THREE.Object3D) {
 }
 
 export function City({ terrain }: { terrain: Terrain }) {
-  const mode = useApp((s) => s.mode)
-  const era = useApp((s) => s.era)
-  const tiles = useApp((s) => s.tiles)
-  const year = useApp((s) => s.year)
   const root = useRef<THREE.Group>(null)
 
   const pieces = useMemo<Piece[]>(() => {
@@ -221,12 +217,26 @@ export function City({ terrain }: { terrain: Terrain }) {
     // monuments
     for (const l of LANDMARKS) {
       if (!l.builder || !BUILDERS[l.builder]) continue
-      const g = BUILDERS[l.builder](l.builderOpts ?? {})
+      let g: THREE.Group
+      if (l.id === 'apollo') {
+        g = new THREE.Group()
+        g.name = 'Temple of Apollo'
+        const hellenistic = BUILDERS.temple({ ...(l.builderOpts ?? {}), eraPhase: 'hellenistic', columnHeight: 7.5 })
+        const roman = BUILDERS.temple({ ...(l.builderOpts ?? {}), eraPhase: 'roman' })
+        g.add(hellenistic, roman)
+        g.userData.eraPhases = { hellenistic, roman, splitYear: 190 }
+      } else {
+        g = BUILDERS[l.builder](l.builderOpts ?? {})
+      }
       if (l.builder === 'theatre') {
-        // richer stage front (Codex): aediculae, pediments, doors and statues, overlaid on the scaena
-        const det = theatreScaenaeDetail(70, 20)
+        // Richer Severan stage front aligned with actual theatre options and open stage portals
+        const sw = Number(l.builderOpts?.stageWidth ?? 70)
+        const sd = Number(l.builderOpts?.stageDepth ?? 12)
+        const sh = Number(l.builderOpts?.stageHeight ?? 20)
+        const or = Number(l.builderOpts?.outerRadius ?? 51.5)
+        const det = theatreScaenaeDetail(sw, sh)
         det.rotation.y = Math.PI
-        det.position.set(0, 1.5, Math.max(13, 50 * 0.3) - 12 / 2 - 0.71)
+        det.position.set(0, 1.5, Math.max(13, or * 0.3) - sd / 2 - 0.71)
         g.add(det)
       }
       const yaw = THREE.MathUtils.degToRad(l.rotation ?? 0)
@@ -240,7 +250,15 @@ export function City({ terrain }: { terrain: Terrain }) {
       let baseY = l.builderOpts?.sink !== undefined
         ? terrain.heightAt(x, z) - Number(l.builderOpts.sink)
         : groundUnder(terrain, x, z, r)
-      if (l.builder === 'frontinusGate' || l.builder === 'byzantineGate') baseY = terrain.heightAt(x, z)
+      if (l.builder === 'frontinusGate' || l.builder === 'byzantineGate' || l.builder === 'temple') {
+        baseY = terrain.heightAt(x, z)
+      } else if (l.builder === 'agora' || l.builder === 'baths') {
+        baseY = terrain.heightAt(x, z) + 0.8
+      } else if (l.builder === 'martyrium') {
+        baseY = terrain.heightAt(x, z) + 0.55
+      } else if (l.builder === 'church') {
+        baseY = terrain.heightAt(x, z) + (l.id === 'philip-church' ? 0.6 : 0.05)
+      }
       if (l.builder === 'latrine') {
         // Place the walkable entrance at local +Z on the terrain at the
         // threshold. The lowest corner of this long plot is downhill.
@@ -335,17 +353,28 @@ export function City({ terrain }: { terrain: Terrain }) {
     return out
   }, [terrain])
 
-  useEffect(() => () => pieces.forEach((p) => p.obj.traverse((c) => (c as THREE.Mesh).geometry?.dispose())), [pieces])
+  useEffect(() => () => pieces.forEach((p) => p.obj.traverse((c) => {
+    const m = c as THREE.Mesh
+    m.geometry?.dispose()
+    if ((c as THREE.InstancedMesh).isInstancedMesh) (c as THREE.InstancedMesh).dispose()
+  })), [pieces])
 
   // plan mode: flatten to footprints; today mode: shrink to ruin stubs (or hide under the photo mesh)
   const flat = useRef(1)
   useFrame((_, dt) => {
+    const { mode, era, tiles, year } = useApp.getState()
     const target = mode !== 'plan' && era === 'today' ? 0.3 : 1
     const k = 1 - Math.exp(-dt * 2.5)
     flat.current += (target - flat.current) * k
+    const gated = timeGated(mode)
     for (const p of pieces) {
       if (p.flatten) p.obj.scale.y = flat.current
-      p.obj.visible = !timeGated(mode) || (year >= p.built && (p.until === undefined || year <= p.until))
+      p.obj.visible = !gated || (year >= p.built && (p.until === undefined || year <= p.until))
+      const phases = p.obj.userData.eraPhases as { hellenistic: THREE.Object3D; roman: THREE.Object3D; splitYear: number } | undefined
+      if (phases) {
+        phases.hellenistic.visible = gated && year < phases.splitYear
+        phases.roman.visible = !gated || year >= phases.splitYear
+      }
     }
     getMaterials().roofTile.visible = flat.current > 0.4
     if (root.current) root.current.visible = !(era === 'today' && tiles === 'ready' && mode !== 'plan')

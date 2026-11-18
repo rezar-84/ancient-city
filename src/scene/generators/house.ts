@@ -145,12 +145,14 @@ export function theatreScaenaeDetail(width = 90, height = 28): THREE.Group {
         shape.lineTo(-bw / 2, 0);
         add('marble', new THREE.ExtrudeGeometry(shape, { depth: 0.4, bevelEnabled: false }), x, py, 0.7);
       }
-      // Five ground-floor door bays; remaining bays contain shallow niches and statues.
-      if (tier === 0 && i % 2 === 0) {
-        const dw = bay * (i === 4 ? 0.44 : 0.3), dh = ch * (i === 4 ? 0.95 : 0.78);
-        b.box('limestone', dw, dh, 0.015, x, dh / 2, 0.02);
-        for (const s of [-1, 1]) b.box('marble', 0.16, dh, 0.22, x + s * (dw / 2 + 0.08), dh / 2, 0.13);
-        b.box('marble', dw + 0.48, 0.24, 0.28, x, dh + 0.12, 0.16);
+      // Ground-floor bays at i = 1, 4, 7 align with the three actual stage portals (±0.28 * width and 0)
+      // and leave the openings clear for walkthrough; remaining bays contain shallow niches and statues.
+      const isActualPortal = tier === 0 && (i === 1 || i === 4 || i === 7);
+      if (isActualPortal) {
+        const px = i === 4 ? 0 : (i < 4 ? -width * 0.28 : width * 0.28);
+        const dw = 3.2, dh = Math.min(4.8, ch * 0.92);
+        for (const s of [-1, 1]) b.box('marble', 0.18, dh, 0.24, px + s * (dw / 2 + 0.09), dh / 2, 0.14);
+        b.box('marble', dw + 0.56, 0.26, 0.3, px, dh + 0.13, 0.16);
       } else {
         const sh = Math.min(2.2, ch * 0.5);
         // Darkened stone niche, still using only marble/limestone shared materials.

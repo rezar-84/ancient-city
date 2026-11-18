@@ -5,7 +5,7 @@ import type { Terrain } from './terrainData'
 import { buildWater, waterAt, waterUniforms, type WaterVolume } from './water'
 import { sceneUniforms } from './Terrain'
 import { SKY } from './sky'
-import { useApp } from '../store'
+import { timeGated, useApp } from '../store'
 
 /** water volumes of the current scene (Sacred Pool + travertine terraces), read by walk physics */
 export let WATER_VOLUMES: WaterVolume[] = []
@@ -39,6 +39,15 @@ export default function Water({ terrain }: { terrain: Terrain }) {
     waterUniforms.uTime.value = sceneUniforms.uTime.value
     const u = built.group.userData.uSteam as { value: number } | undefined
     if (u) u.value = SKY.steam
+    const phases = built.group.userData.poolPhases as { porticoGroup: THREE.Group; debrisGroup: THREE.Group } | undefined
+    if (phases) {
+      const st = useApp.getState()
+      const gated = timeGated(st.mode)
+      // Toppled columns came from the 7th-century earthquake: upright Roman portico AD 80–619, pure spring in 150 BC
+      const postQuake = st.era === 'today' || (gated && st.year >= 620)
+      phases.debrisGroup.visible = postQuake
+      phases.porticoGroup.visible = !postQuake && (!gated || st.year >= 80)
+    }
   })
   return <primitive object={built.group} visible={mode !== 'plan'} />
 }

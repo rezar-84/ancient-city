@@ -3,7 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useApp, walkInputBlocked } from '../store'
 import { getTerrain, loadTerrain } from '../scene/terrainData'
-import { rig } from '../scene/camera'
+import { killFlight, rig } from '../scene/camera'
 import { GRID_AXES, HOUSE_RECTS, STREET_SEGS } from '../scene/CityGrid'
 import { CHARACTERS } from '../content/characters'
 import { GRID } from '../content/grid'
@@ -139,6 +139,7 @@ export function WalkControls() {
     const cam = camera as THREE.PerspectiveCamera
     const t = getTerrain(), c = CHARACTERS.find((x) => x.id === character) ?? CHARACTERS[2]
     if (!t) return
+    killFlight()
     const resume = useApp.getState().walkSession
     const [x, z] = resume ? [walk.x, walk.z] : t.toLocal(c.spawn.lat, c.spawn.lon)
     Object.assign(walk, { x, z, vx: 0, vz: 0, vy: 0, grounded: true, yaw: resume ? walk.yaw : -THREE.MathUtils.degToRad(c.spawn.heading), pitch: resume ? walk.pitch : 0 })
@@ -390,7 +391,19 @@ export function WalkControls() {
     if (S.camDist > 0.1) {
       n.set(walk.x, eyeY, walk.z)
       back.y += 0.35
-      back.setLength(probe.cameraDistance(n, back))
+      let maxBoom = probe.cameraDistance(n, back)
+      // Also prevent the 3rd-person camera boom from passing inside CityGrid house volumes
+      const totalLen = back.length()
+      if (totalLen > 0.01) {
+        for (let stepD = 0.4; stepD < maxBoom; stepD += 0.35) {
+          const frac = stepD / totalLen
+          if (houses.current(walk.x + back.x * frac, walk.z + back.z * frac)) {
+            maxBoom = Math.max(0.2, stepD - 0.25)
+            break
+          }
+        }
+      }
+      back.setLength(maxBoom)
     }
     camera.position.set(walk.x + back.x, eyeY + back.y, walk.z + back.z)
     // keep the third-person camera above ground
