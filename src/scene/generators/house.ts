@@ -27,9 +27,14 @@ function part(key: MaterialKey, ...parts: THREE.BufferGeometry[]): Part {
 export const FACADE_MODULES: Record<string, Array<{ key: MaterialKey; geometry: THREE.BufferGeometry }>> = {
   door: [part('dark', box(1.1, 2.2, 0.008)), part('limestone',
     box(0.16, 2.2, 0.25, -0.63), box(0.16, 2.2, 0.25, 0.63), box(1.42, 0.18, 0.25, 0, 2.29))],
-  window: [part('dark', box(0.6, 0.8, 0.008)), part('limestone',
-    box(0.1, 0.8, 0.16, -0.35), box(0.1, 0.8, 0.16, 0.35),
-    box(0.86, 0.12, 0.2, 0, 0.86), box(0.86, 0.12, 0.24, 0, 0.06))],
+  window: [
+    part('dark', box(0.82, 1.08, 0.012, 0, 0.54, 0.006)),
+    part('limestone',
+      box(0.11, 1.08, 0.18, -0.465, 0.54, 0.09), box(0.11, 1.08, 0.18, 0.465, 0.54, 0.09),
+      box(1.08, 0.13, 0.22, 0, 1.145, 0.11), box(1.08, 0.12, 0.26, 0, -0.04, 0.13)),
+    part('ground',
+      box(0.06, 1.02, 0.06, 0, 0.54, 0.05), box(0.78, 0.06, 0.06, 0, 0.58, 0.05)),
+  ],
   shopFront: [part('dark', box(2.6, 2.6, 0.008)), part('limestone',
     box(0.22, 2.6, 0.25, -1.41), box(0.22, 2.6, 0.25, 1.41), box(3.04, 0.3, 0.32, 0, 2.75)),
     part('bronze', box(1.3, 2.48, 0.08, 0, 1.24, 0).rotateY(-Math.PI / 3).translate(-0.975, 0, 0.64))],
@@ -65,15 +70,31 @@ export function layoutFacade(wing: FacadeWing, rand: () => number): Array<{ modu
   const usable = span - 0.8;
   const spacing = 6 + 3 * rand();
   const n = usable >= 2 * half ? Math.max(1, Math.floor(usable / spacing)) : 0;
+  const doorXs: number[] = [];
   if (floor >= (wing.shop ? 2.9 : 2.38)) for (let i = 0; i < n; i++) {
     const x = (i - (n - 1) / 2) * usable / n;
     emit(opening, x, 0);
+    doorXs.push(x);
   }
-  // Sparse, high-set windows, offset from entrances. Never cross a floor band or eave.
-  const wy = wing.storeys === 2 ? floor + Math.max(0.7, (floor - 0.92) * 0.55) : Math.max(2.6, height - 1.5);
-  const wn = Math.floor((span - 1) / 4.5);
-  if (wy + 0.92 < height - 0.4) for (let i = 0; i < wn; i++) {
-    if (rand() < 0.45) emit('window', (i - (wn - 1) / 2) * 4.5, wy);
+  // Ground-storey windows offset cleanly from entrances + regular upper-storey windows
+  const wn = Math.max(1, Math.floor((span - 1.0) / 3.2));
+  const wStep = wn > 1 ? (span - 1.6) / (wn - 1) : 0;
+  const gWy = Math.min(1.45, Math.max(1.05, floor - 1.55));
+  if (gWy + 1.15 < floor - 0.18) {
+    for (let i = 0; i < wn; i++) {
+      const wx = wn > 1 ? -(span - 1.6) / 2 + i * wStep : 0;
+      const clearOfDoors = doorXs.every(dx => Math.abs(wx - dx) > half + 0.68);
+      if (clearOfDoors && rand() < 0.82) emit('window', wx, gWy);
+    }
+  }
+  if (wing.storeys === 2) {
+    const uWy = floor + Math.max(0.65, (floor - 1.2) * 0.48);
+    if (uWy + 1.15 < height - 0.32) {
+      for (let i = 0; i < wn; i++) {
+        const wx = wn > 1 ? -(span - 1.6) / 2 + i * wStep : 0;
+        if (rand() < 0.88) emit('window', wx, uWy);
+      }
+    }
   }
   // Scale only the final repeat so short wings and fractional metres stay inside corners.
   const bandLength = Math.max(0, span - 0.4);

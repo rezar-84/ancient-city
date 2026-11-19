@@ -159,7 +159,7 @@ export function CityDetails({ terrain }: { terrain: Terrain }) {
   // house facades near the walker (doors, windows, shop fronts, string courses, eaves, balconies)
   const facades = useMemo(() => {
     const mats = getMaterials() as unknown as Record<string, THREE.Material>
-    const CAP = 2600
+    const CAP = 4200
     return Object.entries(FACADE_MODULES).map(([name, parts]) => {
       const casts = name === 'shop' || name === 'balcony'
       return {
@@ -176,12 +176,15 @@ export function CityDetails({ terrain }: { terrain: Terrain }) {
   const lastF = useRef({ x: 1e9, z: 1e9, n: -1 })
   const last = useRef({ x: 1e9, z: 1e9 })
   const clock = useRef(0)
-  useFrame((_, dt) => {
+  useFrame(({ camera }, dt) => {
     clock.current += dt
     ;(foliage.grass.userData.uTime as { value: number }).value = clock.current
-    if (mode !== 'walk') { grass.visible = false; facades.forEach((f) => f.meshes.forEach((m) => { m.count = 0 })); lastF.current.n = -1; return }
-    grass.visible = true
-    if (Math.hypot(walk.x - lastF.current.x, walk.z - lastF.current.z) > 15 || lastF.current.n !== FACADE_PLACEMENTS.length) {
+    const walking = mode === 'walk'
+    grass.visible = walking
+    const fx = walking ? walk.x : camera.position.x
+    const fz = walking ? walk.z : camera.position.z
+    const fRad = walking ? 130 : 210
+    if (Math.hypot(fx - lastF.current.x, fz - lastF.current.z) > 15 || lastF.current.n !== FACADE_PLACEMENTS.length) {
       if (facadeGrid.current.n !== FACADE_PLACEMENTS.length) {
         const map = new Map<string, typeof FACADE_PLACEMENTS>()
         for (const pl of FACADE_PLACEMENTS) {
@@ -191,16 +194,16 @@ export function CityDetails({ terrain }: { terrain: Terrain }) {
         }
         facadeGrid.current = { n: FACADE_PLACEMENTS.length, map }
       }
-      lastF.current = { x: walk.x, z: walk.z, n: FACADE_PLACEMENTS.length }
+      lastF.current = { x: fx, z: fz, n: FACADE_PLACEMENTS.length }
       const counts = new Map<string, number>()
       const byName = new Map(facades.map((f) => [f.name, f.meshes]))
-      const gx0 = Math.floor((walk.x - 110) / 64), gx1 = Math.floor((walk.x + 110) / 64)
-      const gz0 = Math.floor((walk.z - 110) / 64), gz1 = Math.floor((walk.z + 110) / 64)
+      const gx0 = Math.floor((fx - fRad) / 64), gx1 = Math.floor((fx + fRad) / 64)
+      const gz0 = Math.floor((fz - fRad) / 64), gz1 = Math.floor((fz + fRad) / 64)
       for (let gx = gx0; gx <= gx1; gx++) for (let gz = gz0; gz <= gz1; gz++) {
         const bucket = facadeGrid.current.map.get(`${gx},${gz}`)
         if (!bucket) continue
         for (const pl of bucket) {
-          if (Math.abs(pl.x - walk.x) > 110 || Math.abs(pl.z - walk.z) > 110) continue
+          if (Math.abs(pl.x - fx) > fRad || Math.abs(pl.z - fz) > fRad) continue
           const ms = byName.get(pl.module); if (!ms) continue
           const i = counts.get(pl.module) ?? 0
           if (i >= ms[0].instanceMatrix.count) continue
@@ -210,6 +213,7 @@ export function CityDetails({ terrain }: { terrain: Terrain }) {
       }
       for (const f of facades) for (const m of f.meshes) { m.count = counts.get(f.name) ?? 0; m.instanceMatrix.needsUpdate = true }
     }
+    if (!walking) return
     if (Math.hypot(walk.x - last.current.x, walk.z - last.current.z) < 15) return
     last.current = { x: walk.x, z: walk.z }
     const rand = rng(Math.floor(walk.x) * 73856093 ^ Math.floor(walk.z) * 19349663)

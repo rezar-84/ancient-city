@@ -37,6 +37,24 @@ function unitBox() {
   g.setAttribute('color', new THREE.Float32BufferAttribute(new Array(g.attributes.position.count * 3).fill(1), 3))
   return g
 }
+/** Unit classical Doric/Ionic domestic peristyle column (height 1, width 1, bottom at y = 0). */
+function unitColumn() {
+  const parts: THREE.BufferGeometry[] = [
+    new THREE.BoxGeometry(1.0, 0.08, 1.0).translate(0, 0.04, 0),
+    new THREE.CylinderGeometry(0.42, 0.48, 0.05, 10).translate(0, 0.105, 0),
+    new THREE.CylinderGeometry(0.32, 0.39, 0.76, 10).translate(0, 0.51, 0),
+    new THREE.CylinderGeometry(0.46, 0.34, 0.055, 10).translate(0, 0.9175, 0),
+    new THREE.BoxGeometry(0.96, 0.055, 0.96).translate(0, 0.9725, 0),
+  ]
+  const nonIdx = parts.map((g) => {
+    const ng = g.index ? g.toNonIndexed() : g
+    ng.setAttribute('color', new THREE.Float32BufferAttribute(new Array(ng.attributes.position.count * 3).fill(1), 3))
+    return ng
+  })
+  const merged = mergeAll(nonIdx)
+  new Set([...parts, ...nonIdx]).forEach((g) => g.dispose())
+  return merged
+}
 /** unit gable prism: 1 wide (x), ridge 1 high (y), 1 long (z), base on y=0 */
 function unitGable() {
   const s = new THREE.Shape([new THREE.Vector2(-0.5, 0), new THREE.Vector2(0.5, 0), new THREE.Vector2(0, 1)])
@@ -203,10 +221,10 @@ function buildCity(t: Terrain): Built {
           if (j === 0 && m === 0) {
             // tabernae: a row of shops opening onto the colonnaded main street, lean-to roofs draining to the street
             wing(cu, side * (v0 + 3.5), iu, 6.5, 4.4, base, 'shed', side > 0 ? 'v-' : 'v+', side > 0 ? 'v-' : 'v+', true)
-            wing(cu, side * (v0 + 6.5 + (iv - 6.5) / 2 + 0.3), iu * 0.9, iv - 7.5, h, base, rand() < 0.5 ? 'hip' : 'gable')
+            wing(cu, side * (v0 + 6.5 + (iv - 6.5) / 2 + 0.3), iu * 0.9, iv - 7.5, h, base, rand() < 0.5 ? 'hip' : 'gable', undefined, side > 0 ? 'v+' : 'v-')
           } else if (r < 0.75) {
             // peristyle / courtyard house: four wings round an open court; roofs either drain into the court
-            // (compluviate lean-tos) or are plain gables; a paved court with a portico of piers on the long sides
+            // (compluviate lean-tos) or are plain gables; a paved court with classical peristyle columns
             const d = 4.5 + rand() * 1.2
             const vv = cv
             const inward = rand() < 0.6
@@ -217,15 +235,24 @@ function buildCity(t: Terrain): Built {
             wing(cu, vv - (iv / 2 - d / 2), iu - 2 * d, d, h * 0.8, base, k, 'v+', OPP['v+'])
             wing(cu, vv + (iv / 2 - d / 2), iu - 2 * d, d, h * 0.8, base, k, 'v-', OPP['v-'])
             const cuL = iu - 2 * d, cvL = iv - 2 * d
-            if (cuL > 3 && cvL > 3) {
+            if (cuL >= 4.2 && cvL >= 4.2) {
               const [x, z] = P(cu, vv)
               push(courtM, x, z, base - 0.6, cvL, 0.75, cuL)
-              // piers along the two long sides of the court, 0.9 m in front of the wing walls
-              const ph = h * 0.8 - 0.4, n = Math.max(2, Math.round((cvL - 1) / 3))
-              for (const sgn of [-1, 1]) for (let s2 = 0; s2 < n; s2++) {
-                const pv = vv - cvL / 2 + 0.6 + (s2 + 0.5) * (cvL - 1.2) / n
-                const [px, pz] = P(cu + sgn * (cuL / 2 - 0.9), pv)
-                push(pierM, px, pz, base, 0.42, ph, 0.42)
+              // Classical peristyle columns seated cleanly on courtyard paving (base + 0.15), capped under eaves
+              const ph = Math.min(3.3, Math.max(2.4, h * 0.66))
+              const colInset = 1.15
+              const spanV = cvL - 2 * colInset
+              const n = Math.max(2, Math.round(spanV / 2.6) + 1)
+              for (const sgn of [-1, 1]) {
+                const colU = cu + sgn * (cuL / 2 - colInset)
+                for (let s2 = 0; s2 < n; s2++) {
+                  const pv = vv - spanV / 2 + (n > 1 ? (s2 / (n - 1)) * spanV : 0)
+                  const [px, pz] = P(colU, pv)
+                  push(pierM, px, pz, base + 0.15, 0.44, ph, 0.44)
+                }
+                // Travertine architrave beam tying each peristyle column row cleanly together
+                const [bx, bz] = P(colU, vv)
+                push(courtM, bx, bz, base + 0.15 + ph, spanV + 0.5, 0.28, 0.44)
               }
             }
           } else {
@@ -235,7 +262,7 @@ function buildCity(t: Terrain): Built {
             wing(cu, bc, bw, bv, h, base, rand() < 0.55 ? 'hip' : 'gable', undefined, side > 0 ? 'v-' : 'v+')
             if (rand() < 0.5) {
               const sideU = rand() < 0.5 ? -1 : 1
-              wing(cu + sideU * (bw / 2 - 2.2), bc + side * (bv / 2 + 2.4), 4.4, 4.8, h * 0.62, base, 'shed', side > 0 ? 'v+' : 'v-')
+              wing(cu + sideU * (bw / 2 - 2.2), bc + side * (bv / 2 + 2.4), 4.4, 4.8, h * 0.62, base, 'shed', side > 0 ? 'v+' : 'v-', side > 0 ? 'v+' : 'v-')
             }
           }
         }
@@ -321,7 +348,7 @@ function buildCity(t: Terrain): Built {
   const walls = inst(unitBox(), mats.plaster, wallM)
   const roofs = [inst(unitGable(), mats.roofTile, roofM.gable), inst(unitHip(), mats.roofTile, roofM.hip), inst(unitShed(), mats.roofTile, roofM.shed)]
   const courts = inst(unitBox(), mats.travertine, courtM)
-  const piers = inst(unitBox(), mats.plaster, pierM)
+  const piers = inst(unitColumn(), mats.travertine, pierM)
   // per-house colour variation: weathered terracotta of different firings, lime plaster of different ages
   const c = new THREE.Color(), roofTones = ['#c26a43', '#b45a38', '#a8613f', '#c97f55', '#9c5236', '#b8704a', '#a65a3e'].map((h) => new THREE.Color(h))
   for (const rm of roofs) for (let i = 0; i < rm.count; i++) {
