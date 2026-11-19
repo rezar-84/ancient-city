@@ -109,6 +109,8 @@ export function WalkControls() {
   // (re)build collision data when the city changes (city layer, era)
   useEffect(() => {
     if (!active || !terrainReady) return
+    st.current.smoothFeet = Number.NaN
+    st.current.dip = 0
     const epoch = `${scene.uuid}:${year}:${showGrid}`
     probeReady.current = false
     const id = window.setTimeout(() => {

@@ -12,7 +12,7 @@ export function createColonnadedStreet(o: ColonnadedStreetOptions = {}): THREE.G
   const b = new Building('Colonnaded Street'); b.foundation(w + 2 * d, l);
   b.box('travertine', w, 0.16, l);
   const placements: Placement[] = [], bays = Math.max(1, Math.round(l / spacing)), pitch = l / bays;
-  const addTabernaDoor = (side: number, backX: number, doorZ: number, doorW: number) => {
+  const addTabernaDoor = (side: number, backX: number, doorZ: number, doorW: number, passThrough: boolean) => {
     const inSign = -side; // inward toward the portico is -side
     // Limestone threshold with pivot groove, timber jambs/lintel, and open wooden shop shutter leaves
     b.box('limestone', 0.74, 0.06, doorW + 0.24, backX, 0.38, doorZ);
@@ -25,8 +25,11 @@ export function createColonnadedStreet(o: ColonnadedStreetOptions = {}): THREE.G
       b.box('bronze', 0.08, 0.07, 0.54, backX + inSign * 0.35, 2.15, jz + s * 0.28, inSign * s * 0.18);
     }
     b.box('ground', 0.26, 0.16, doorW + 0.28, backX + inSign * 0.22, 2.94, doorZ);
-    // Dark recessed shop interior panel behind the doorway so closed insula boxes never show bright seams
-    b.box('dark', 0.06, 2.5, doorW - 0.12, backX - inSign * 0.24, 0.38 + 1.25, doorZ);
+    // Alternating doorways remain completely open so walkers can step sideways off the Plateia;
+    // closed shop bays use a recessed warm timber door rather than a solid black blocker.
+    if (!passThrough) {
+      b.box('ground', 0.08, 2.5, doorW - 0.12, backX - inSign * 0.24, 0.38 + 1.25, doorZ);
+    }
   };
   for (const side of [-1, 1]) {
     const backX = side * (w / 2 + d);
@@ -41,7 +44,7 @@ export function createColonnadedStreet(o: ColonnadedStreetOptions = {}): THREE.G
     if (!open) {
       for (let i = 0; i <= bays; i++) b.box('plaster', 0.6, h, Math.max(0.5, pitch - 1.5), backX, h / 2 + 0.35, -l / 2 + i * pitch);
       b.box('plaster', 0.6, h - 2.6, l, backX, 2.95 + (h - 2.6) / 2);
-      for (let i = 0; i < bays; i++) addTabernaDoor(side, backX, -l / 2 + (i + 0.5) * pitch, doorW);
+      for (let i = 0; i < bays; i++) addTabernaDoor(side, backX, -l / 2 + (i + 0.5) * pitch, doorW, i % 2 === 0);
     } else {
       // per-bay walls so stretches can open onto a monument or intersecting street behind the portico
       for (let i = 0; i <= bays; i++) {
@@ -50,7 +53,7 @@ export function createColonnadedStreet(o: ColonnadedStreetOptions = {}): THREE.G
         if (!hereOpen) b.box('plaster', 0.6, h, Math.max(0.5, pitch - 1.5), backX, h / 2 + 0.35, z);
         if (i < bays && !hereOpen && !open(backX, z + pitch * 0.5) && !open(backX, z + pitch)) {
           b.box('plaster', 0.6, h - 2.6, pitch, backX, 2.95 + (h - 2.6) / 2, z + pitch / 2);
-          addTabernaDoor(side, backX, z + pitch / 2, doorW);
+          addTabernaDoor(side, backX, z + pitch / 2, doorW, i % 2 === 0);
         }
       }
     }

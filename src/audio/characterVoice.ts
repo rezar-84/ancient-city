@@ -1,7 +1,15 @@
+import { getVolume } from '../ui/ambient'
+
 export interface VoiceProfile {
   gender: 'f' | 'm'
   pitch: number
   rate: number
+}
+
+function effectiveVoiceVolume(): number {
+  const master = getVolume('master')
+  const voices = getVolume('voices')
+  return Math.max(0, Math.min(1, master * voices))
 }
 
 let activeAudio: HTMLAudioElement | null = null
@@ -40,13 +48,14 @@ function pickVoice(lang: 'en' | 'tr', gender: 'f' | 'm'): SpeechSynthesisVoice |
 }
 
 function speakFallbackTTS(text: string, lang: 'en' | 'tr', profile: VoiceProfile, onEnd?: () => void): boolean {
-  if (!text.trim() || !ttsSupported()) return false
+  const vol = effectiveVoiceVolume()
+  if (!text.trim() || !ttsSupported() || vol <= 0.001) return false
   try {
     const utt = new SpeechSynthesisUtterance(text)
     utt.lang = lang === 'tr' ? 'tr-TR' : 'en-US'
     utt.pitch = profile.pitch
     utt.rate = profile.rate
-    utt.volume = 0.92
+    utt.volume = vol
     const voice = pickVoice(lang, profile.gender)
     if (voice) utt.voice = voice
     utt.onend = () => { if (activeUtterance === utt) activeUtterance = null; onEnd?.() }
@@ -70,10 +79,12 @@ export function playCharacterClip(
 ): boolean {
   if (typeof window === 'undefined') return false
   stopCharacterVoice()
+  const vol = effectiveVoiceVolume()
+  if (vol <= 0.001) return false
   if (typeof Audio !== 'undefined') {
     const url = `/audio/characters/${characterId}-${clipKey}-${lang}.mp3`
     const el = new Audio(url)
-    el.volume = 0.95
+    el.volume = vol
     activeAudio = el
     el.onended = () => { if (activeAudio === el) activeAudio = null; onEnd?.() }
     el.onerror = () => {

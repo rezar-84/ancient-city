@@ -38,6 +38,7 @@ export function WalkHUD() {
   const year = useApp((st) => st.year)
   const selected = useApp((st) => st.selected)
   const paused = useApp((st) => st.walkPaused)
+  const overlay = useApp((st) => st.walkOverlay)
   const pauseDialog = useRef<HTMLDialogElement>(null)
   const [near, setNear] = useState<string | null>(null)
   const [locked, setLocked] = useState(false)
@@ -48,6 +49,13 @@ export function WalkHUD() {
   const ribbon = useRef<HTMLDivElement>(null)
   const tint = useRef<HTMLDivElement>(null)
   const active = mode === 'walk'
+
+  useEffect(() => {
+    if (!active || paused || selected || overlay) {
+      setStoryOpen(false)
+      if (!active || paused) { stopCharacterVoice(); setSpeaking(false) }
+    }
+  }, [active, paused, selected, overlay])
 
   useEffect(() => {
     const dialog = pauseDialog.current
@@ -227,7 +235,7 @@ export function WalkHUD() {
       {/* first-time help */}
       {!moved && !selected && (
         <div className="glass absolute left-1/2 top-1/2 max-w-sm -translate-x-1/2 translate-y-10 rounded-2xl px-5 py-3 text-center text-sm">
-          <p className="hidden sm:block">{tr(lang, 'Click to look around · W A S D walk · Shift run · double-tap W sprint · Space jump · G greet · E learn about a place · M map & travel · V third person · Esc pause / resume', 'Bakmak için tıklayın · W A S D yürü · Shift koş · W’ye iki kez bas: depar · Boşluk zıpla · G selam ver · E bilgi · M harita ve yolculuk · V üçüncü şahıs · Esc duraklat / devam et')}</p>
+          <p className="hidden sm:block">{tr(lang, 'Click to look around · W A S D walk · Shift run · double-tap W sprint · Space jump · G greet · F reflect · J story · E learn about a place · M map & travel · V third person · Esc pause / resume', 'Bakmak için tıklayın · W A S D yürü · Shift koş · W’ye iki kez bas: depar · Boşluk zıpla · G selam ver · F düşünce · J hikâye · E bilgi · M harita ve yolculuk · V üçüncü şahıs · Esc duraklat / devam et')}</p>
           <p className="sm:hidden">{tr(lang, 'Use the joystick to walk and drag to look around', 'Yürümek için joystick’i kullanın, bakmak için sürükleyin')}</p>
         </div>
       )}
