@@ -245,35 +245,50 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
       npcs.push({ ...entry, age, cut, fabric, stature, build, propIdx })
     }
 
-    const pop = variant === 'roman' ? 1 : 0.68
-    const nWalk = Math.round(230 * pop), nCross = Math.round(68 * pop)
+    // Curated, lower-clutter crowd: fewer generic wanderers so every nearby citizen can stay full rigged quality
+    const pop = variant === 'roman' ? 1 : 0.72
+    const nWalk = Math.round(44 * pop), nCross = Math.round(14 * pop)
     for (let i = 0; i < nWalk; i++) {
       const lane = [-10.0, -6, -2.2, 2.2, 6, 10.0][Math.floor(rand() * 6)]
       let uu = 0
-      for (let k = 0; k < 8; k++) { uu = rand() < 0.48 ? 14 + rand() * 270 : 20 + rand() * (F.L - 40); if (!solidMonumentAt(...F.P(uu, lane), spawnYr, 1)) break }
+      for (let k = 0; k < 8; k++) { uu = rand() < 0.52 ? 14 + rand() * 270 : 20 + rand() * (F.L - 40); if (!solidMonumentAt(...F.P(uu, lane), spawnYr, 1)) break }
       const roll = rand()
       let role: CitizenRole = 'resident'
       let prop: PropKind | undefined
       let pose: number = POSE.walk
-      let speed = 1.0 + rand() * 0.45
-      if (roll < 0.17) {
+      let speed = 1.0 + rand() * 0.42
+      if (roll < 0.22) {
         role = 'porter'
-        prop = rand() < 0.58 ? 'amphora' : 'basket'
+        prop = rand() < 0.62 ? 'amphora' : 'basket'
         pose = prop === 'amphora' ? POSE.carry : POSE.walk
-        speed = 0.88 + rand() * 0.28
-      } else if (roll < 0.25) {
+        speed = 0.88 + rand() * 0.26
+      } else if (roll < 0.30) {
         role = 'soldier'
         prop = 'staff'
-        speed = 1.05 + rand() * 0.22
-      } else if (roll < (variant === 'byzantine' ? 0.44 : 0.33)) {
+        speed = 1.02 + rand() * 0.20
+      } else if (roll < (variant === 'byzantine' ? 0.50 : 0.38)) {
         role = 'pilgrim'
         prop = 'staff'
-        speed = 0.85 + rand() * 0.30
-      } else if (roll < 0.48) {
+        speed = 0.85 + rand() * 0.28
+      } else if (roll < 0.54) {
         role = 'merchant'
         if (rand() < 0.45) prop = 'scroll'
       }
-      pushNpc({ kind: 'walker', role, prop, u: uu, v: lane + (rand() - 0.5) * 0.6, dir: rand() < 0.5 ? 1 : -1, speed, min: 12, max: F.L - 12, side: 0, phase: rand() * 6.28, pose, look: 0 })
+      const dir = rand() < 0.5 ? 1 : -1
+      const vPos = lane + (rand() - 0.5) * 0.5
+      pushNpc({ kind: 'walker', role, prop, u: uu, v: vPos, dir, speed, min: 12, max: F.L - 12, side: 0, phase: rand() * 6.28, pose, look: 0 })
+      // Family strolling scenario: pair ~1 in 6 adult residents with a child walking right beside them
+      if (role === 'resident' && i % 6 === 0) {
+        const childBuild = 0.75 + rand() * 0.05
+        const childStature = 0.67 + rand() * 0.06
+        femaleFlags.push(rand() < 0.5 ? 1 : 0)
+        npcs.push({
+          kind: 'walker', role: 'resident', age: 'child', cut: 'work', fabric: 'linen',
+          stature: childStature, build: childBuild, propIdx: -1,
+          u: uu - dir * 0.45, v: vPos + (vPos > 0 ? -0.95 : 0.95), dir, speed,
+          min: 12, max: F.L - 12, side: 0, phase: rand() * 6.28, pose: POSE.walk, look: 0,
+        })
+      }
     }
 
     for (let i = 0; i < nCross; i++) {
@@ -335,19 +350,30 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
         }
       }
     }
-    if (stands('agora')) { const [x, z] = at('agora'); groupAt(x, z, variant === 'roman' ? 9 : 6, 0.45) }
-    if (stands('tritons')) { const [x, z] = at('tritons'); groupAt(x, z, 3, 0.15) }
-    if (stands('theatre')) { const [x, z] = at('theatre'); groupAt(x - 40, z, 3, 0.15) }
+    if (stands('agora')) { const [x, z] = at('agora'); groupAt(x, z, variant === 'roman' ? 4 : 3, 0.45) }
+    if (stands('tritons')) { const [x, z] = at('tritons'); groupAt(x, z, 2, 0.15) }
+    if (stands('theatre')) { const [x, z] = at('theatre'); groupAt(x - 40, z, 2, 0.15) }
 
-    // Merchants behind the portico stalls
+    // Merchants behind the portico stalls + bargaining customers facing them across the counter
     const stalls = stallSpots(F.L)
     stalls.forEach((st, idx) => {
+      if (idx % 2 === 1 && st.u > 220) return // keep stalls lively near Frontinus Gate & Plateia without overpopulating far south
       const [x, z] = F.P(st.u, st.side * 10.6)
+      const merchFace = F.yawV + (st.side > 0 ? Math.PI : 0)
       pushNpc({
         kind: 'merchant', role: 'merchant', prop: idx % 3 === 0 ? 'scroll' : undefined,
         u: 0, v: 0, dir: 1, speed: 0, min: 0, max: 0, x, z,
-        face: F.yawV + (st.side > 0 ? Math.PI : 0), side: 0, phase: rand() * 6.28, pose: POSE.talk, look: 0,
+        face: merchFace, side: 0, phase: rand() * 6.28, pose: POSE.talk, look: 0,
       })
+      // Pair every other stall with a customer bargaining / inspecting wares across the counter
+      if (idx % 2 === 0) {
+        const [cx, cz] = F.P(st.u + 0.15, st.side * 8.6)
+        pushNpc({
+          kind: 'idle', role: 'resident',
+          u: 0, v: 0, dir: 1, speed: 0, min: 0, max: 0, x: cx, z: cz,
+          face: merchFace + Math.PI, side: 0, phase: rand() * 6.28, pose: POSE.talk, look: 0,
+        })
+      }
     })
 
     // Priests / monks praying at the sanctuaries that stand in this year
@@ -359,12 +385,12 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
         pushNpc({ kind: 'priest', role: 'priest', u: 0, v: 0, dir: 1, speed: 0, min: 0, max: 0, x, z, face: Math.atan2(cx - x, cz - z), side: 0, phase: rand() * 6.28, pose: POSE.pray, look: 0 })
       }
     }
-    pray('apollo', 4, 14); pray('ploutonion', 4, 9); pray('martyrium', 5, 22); pray('cathedral', 4, 16); pray('philip-church', 4, 14)
+    pray('apollo', 3, 14); pray('ploutonion', 3, 9); pray('martyrium', 4, 22); pray('cathedral', 3, 16); pray('philip-church', 3, 14)
 
     // Era-specific pilgrim processions
     if (variant === 'byzantine' && stands('martyrium')) {
       const [ax, az] = at('philip-church'), [bx, bz] = at('martyrium')
-      for (let i = 0; i < 26; i++) {
+      for (let i = 0; i < 12; i++) {
         pushNpc({
           kind: 'pilgrim', role: 'pilgrim', prop: 'staff',
           u: rand(), v: (rand() - 0.5) * 3, dir: rand() < 0.5 ? 1 : -1,
@@ -375,7 +401,7 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
       }
     } else if (stands('ploutonion')) {
       const [ax, az] = at('antique-pool'), [bx, bz] = at('ploutonion')
-      for (let i = 0; i < 12; i++) {
+      for (let i = 0; i < 8; i++) {
         pushNpc({
           kind: 'pilgrim', role: 'pilgrim', prop: 'staff',
           u: rand(), v: (rand() - 0.5) * 2.5, dir: rand() < 0.5 ? 1 : -1,
@@ -475,7 +501,7 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
         age: 'adult',
       })
     }
-    const poolSize = window.matchMedia('(pointer: coarse)').matches ? 2 : 4
+    const poolSize = window.matchMedia('(pointer: coarse)').matches ? 8 : 18
     const closePeople = Array.from({ length: citizenAssets ? poolSize : 0 }, (_, slotIndex) => {
       const gender = slotIndex % 2 ? 'f' as const : 'm' as const
       const citizen = createRiggedCitizen(variant, { cloth: new THREE.Color(pal.cloth[0]), skin: new THREE.Color(SKIN_TONES[2]), accent: new THREE.Color(pal.accent[0]) }, gender)
@@ -552,7 +578,7 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
       nearAttr, farAttr, hAttr, cAttr,
       npcTint0, npcTint1, npcTint2, npcStyle, horseTints,
       avatar, closePeople, mats: [pMat, hMat, cMat, ...depthMats],
-      bestIds: new Int32Array(8), bestD2: new Float64Array(8),
+      bestIds: new Int32Array(Math.max(poolSize, 18)), bestD2: new Float64Array(Math.max(poolSize, 18)),
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [terrain, variant, character, citizenAssets, mode === 'walk' ? year : 0])
@@ -606,7 +632,7 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
     const nowMs = performance.now()
     const wavingNow = walking && nowMs < walk.waveUntil
 
-    // Zero-alloc top-K nearest selection for the close skeletal citizen pool
+    // Zero-alloc top-K nearest selection for the close skeletal citizen pool (wide 52 m radius eliminates up-close shape popping)
     let candCount = 0
     const poolLen = sim.closePeople.length
     if (walking && poolLen > 0) {
@@ -614,7 +640,7 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
       for (let i = 0; i < npcs.length; i++) {
         const dx = NPC_STATE.x[i] - px, dz = NPC_STATE.z[i] - pz
         const d2 = dx * dx + dz * dz
-        if (d2 >= 16 * 16) continue
+        if (d2 >= 52 * 52) continue
         if (candCount < poolLen || d2 < bestD2[poolLen - 1]) {
           let posIdx = Math.min(candCount, poolLen - 1)
           while (posIdx > 0 && d2 < bestD2[posIdx - 1]) {
@@ -734,14 +760,19 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
           slot.citizen.root.visible = true
           slot.citizen.root.position.copy(pos); slot.citizen.root.quaternion.copy(q); slot.citizen.root.scale.copy(one)
           const isMerchantStall = n.role === 'merchant' && n.kind === 'merchant'
+          const isTalking = (n.kind === 'idle' || n.kind === 'merchant') && n.pose === POSE.talk
+          const isPraying = n.kind === 'priest'
+          const isGuard = n.kind === 'guard'
           const merchantReach = isMerchantStall ? Math.max(0, Math.sin(clock.current * 0.9 + n.phase)) * 0.72 : 0
-          const merchantBend = isMerchantStall ? merchantReach * 0.24 : 0
+          const prayBow = isPraying ? (Math.sin(clock.current * 0.55 + n.phase) * 0.5 + 0.5) * 0.34 : 0
+          const talkPulse = isTalking && Math.sin(clock.current * 0.65 + n.phase * 1.7) > 0.78
+          const guardLook = isGuard ? Math.sin(clock.current * 0.45 + n.phase) * 0.55 : n.look
           slot.citizen.update(dt, {
             speed: gait ? n.speed : 0,
             grounded: true,
-            wave: replying,
-            look: n.look,
-            bend: merchantBend,
+            wave: replying || talkPulse,
+            look: guardLook,
+            bend: isMerchantStall ? merchantReach * 0.24 : prayBow,
             reach: merchantReach,
             groundAt: footGround,
           })
@@ -750,6 +781,8 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
         }
       }
       if (handledByClose) continue
+      // Keep the immediate walk view exclusively high-detail rigged citizens; only distant figures use instanced LOD
+      if (walking && poolLen > 0 && dist2 < 42 * 42) continue
 
       m4.compose(pos, q, one)
       if (dist2 <= NEAR_R2 && nearCount < nearPeople.instanceMatrix.count) {
