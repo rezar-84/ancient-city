@@ -317,8 +317,8 @@ export function WalkControls() {
     walk.vz += (wz - walk.vz) * Math.min(1, accel * dt)
 
     // ---- roll (C / Control / touch button): grounded dash along the move or facing direction
+    // (buffers are checked before they count down, so one long frame can't swallow a fresh press)
     if (walk.rollPressed) { S.rollBuffer = BUFFER; walk.rollPressed = false }
-    S.rollBuffer = Math.max(0, S.rollBuffer - dt)
     S.sinceRoll += dt
     if (S.rollBuffer > 0 && S.rollT < 0 && walk.grounded && walk.water !== 'swim' && S.sinceRoll >= ROLL.cooldown) {
       const ml = Math.hypot(wx, wz)
@@ -327,6 +327,7 @@ export function WalkControls() {
       walk.rollUntil = performance.now() + ROLL_MS
       walk.onRoll.forEach((cb) => cb())
     }
+    S.rollBuffer = Math.max(0, S.rollBuffer - dt)
     const rolling = S.rollT >= 0
     if (rolling) {
       S.rollT += dt
@@ -339,7 +340,6 @@ export function WalkControls() {
 
     // ---- jump (buffer + coyote time); a run-up faster than 4 m/s turns it into a long jump
     if (walk.jumpPressed) { S.buffer = BUFFER; walk.jumpPressed = false }
-    S.buffer = Math.max(0, S.buffer - dt)
     S.coyote = walk.grounded ? COYOTE : Math.max(0, S.coyote - dt)
     if (swimming && S.buffer > 0) { walk.vy = 3.2; S.buffer = 0 } // kick up: climb out over the edge
     else if (S.buffer > 0 && S.coyote > 0 && !rolling) {
@@ -351,6 +351,7 @@ export function WalkControls() {
       walk.onJump.forEach(cb => cb())
       if (launch.long) walk.onLongJump.forEach(cb => cb())
     }
+    S.buffer = Math.max(0, S.buffer - dt)
 
     // ---- horizontal move with multi-ray shoulder capsule sweep, 2-pass wall sliding, and soft NPC separation
     const beforeX = walk.x, beforeZ = walk.z
