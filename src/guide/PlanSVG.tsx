@@ -6,7 +6,7 @@ import { GRID } from '../content/grid'
 
 /** Static archaeological plan (for print), drawn from the same data as the 3D scene. */
 /** Hippodamian grid lines (lat/lon polylines) for the plan, same parameters as the 3D whole-city layer. */
-function gridLines(): Array<[number, number][]> {
+export function gridLines(): Array<[number, number][]> {
   const lat0 = GRID.axisFrom[0], mLat = 111320, mLon = 111320 * Math.cos((lat0 * Math.PI) / 180)
   const toM = ([la, lo]: [number, number]) => [(lo - GRID.axisFrom[1]) * mLon, -(la - lat0) * mLat]
   const toLL = (x: number, z: number): [number, number] => [lat0 - z / mLat, GRID.axisFrom[1] + x / mLon]

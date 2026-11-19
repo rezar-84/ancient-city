@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useMemo, type ReactNode } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import { useApp } from '../store'
 import { formatYear, useT } from '../i18n'
@@ -9,6 +9,8 @@ import { HISTORIC_MAPS } from '../content/images'
 import { GRID } from '../content/grid'
 import { LANG_LABEL, PLACE_SOUND, VOICES, langForYear } from '../content/soundscapes'
 import { PlanSVG } from './PlanSVG'
+import { PhaseMaps, useTerrain } from './WallMap'
+import { hillshadeURL } from './mapData'
 import { LangSwitch } from '../ui/TopBar'
 import type { Landmark } from '../content/types'
 import './print.css'
@@ -49,9 +51,9 @@ const GLOSSARY: Array<{ term: string; en: string; tr: string }> = [
 const NUMBERS: Array<{ v: string; en: string; tr: string }> = [
   { v: '17', en: 'monuments reconstructed in 3D', tr: 'anıt 3B olarak canlandırıldı' },
   { v: '≈1 km', en: 'colonnaded main street, about 13.5 m wide', tr: 'sütunlu ana cadde, yaklaşık 13,5 m genişliğinde' },
-  { v: '10–15k', en: 'spectators in the theatre (estimates vary)', tr: 'tiyatroda seyirci (tahminler değişir)' },
+  { v: '10–12k', en: 'spectators in the theatre (estimate)', tr: 'tiyatroda seyirci (tahmini)' },
   { v: '>1,200', en: 'tombs recorded in the Northern Necropolis', tr: 'Kuzey Nekropol’de kayıtlı mezar' },
-  { v: '35 °C', en: 'approximate temperature of the thermal springs', tr: 'termal kaynakların yaklaşık sıcaklığı' },
+  { v: '36 °C', en: 'approximate temperature of the thermal springs', tr: 'termal kaynakların yaklaşık sıcaklığı' },
   { v: '1988', en: 'UNESCO World Heritage (mixed natural & cultural site)', tr: 'UNESCO Dünya Mirası (karma doğal ve kültürel alan)' },
   { v: '1957', en: 'Italian Archaeological Mission begins excavating', tr: 'İtalyan Arkeoloji Heyeti kazılara başlar' },
   { v: '2013', en: 'the Ploutonion is rediscovered', tr: 'Plutonion yeniden bulunur' },
@@ -68,6 +70,8 @@ export default function PrintGuide() {
   const t = useT()
   const lang = useApp((s) => s.lang)
   useEffect(() => { document.body.classList.add('printing'); return () => document.body.classList.remove('printing') }, [])
+  const terrain = useTerrain()
+  const relief = useMemo(() => (terrain ? hillshadeURL(terrain) : null), [terrain])
   const url = window.location.origin
   const intro = tr(lang,
     'Hierapolis — the “Holy City” — was founded in the early 2nd century BC by the Attalid kings of Pergamon beside hot springs whose mineral-rich water built the dazzling white travertine terraces of Pamukkale (“cotton castle”). Under Rome it became a prosperous spa and textile centre with a theatre, baths, temples and one of the largest cemeteries of the ancient world. In Christian times pilgrims came to the shrine of the Apostle Philip, martyred here according to tradition. This guide follows the interactive 3D experience: each number matches the plan.',
@@ -83,6 +87,7 @@ export default function PrintGuide() {
         <a href="#/" className="btn-ghost">← Hierapolis 3D</a>
         <div className="flex items-center gap-3">
           <a href="#/poster" className="btn-ghost">▭ {tr(lang, 'Posters', 'Posterler')}</a>
+          <a href="#/wallmap" className="btn-ghost">▦ {tr(lang, 'A2 wall map', 'A2 duvar haritası')}</a>
           <LangSwitch />
           <button className="btn-gold" onClick={() => window.print()}>⎙ {t('guide')} / PDF</button>
         </div>
@@ -121,12 +126,14 @@ export default function PrintGuide() {
           <li>{tr(lang, 'Timeline', 'Zaman çizelgesi')} — 3</li>
           <li>{tr(lang, 'Archaeological plan', 'Arkeolojik plan')} — 4</li>
           <li>{tr(lang, 'The street grid', 'Sokak dokusu')} — 5</li>
-          <li>{tr(lang, 'Historic maps', 'Tarihî haritalar')} — 6</li>
-          {LANDMARKS.map((l, i) => <li key={l.id}><b className="font-display text-terracotta">{i + 1}</b> {l.name[lang]} — {7 + i}</li>)}
-          <li>{tr(lang, 'Ancient voices', 'Antik sesler')} — {7 + LANDMARKS.length}</li>
-          <li>{tr(lang, 'Glossary', 'Sözlük')} — {8 + LANDMARKS.length}</li>
-          <li>{t('sources')} & {t('credits')} — {9 + LANDMARKS.length}</li>
+          <li>{tr(lang, 'The city through time', 'Zaman içinde kent')} — 6</li>
+          <li>{tr(lang, 'Historic maps', 'Tarihî haritalar')} — 7</li>
+          {LANDMARKS.map((l, i) => <li key={l.id}><b className="font-display text-terracotta">{i + 1}</b> {l.name[lang]} — {8 + i}</li>)}
+          <li>{tr(lang, 'Ancient voices', 'Antik sesler')} — {8 + LANDMARKS.length}</li>
+          <li>{tr(lang, 'Glossary', 'Sözlük')} — {9 + LANDMARKS.length}</li>
+          <li>{t('sources')} & {t('credits')} — {10 + LANDMARKS.length}</li>
         </ol>
+        <p className="mt-5 rounded border border-gold/50 bg-parchment/40 px-3 py-2 text-[9.5pt] leading-snug">▦ {tr(lang, 'Also to print: an A2 wall map with switchable layers (terrain, contours, excavated remains, walls, streets, tour route) and callouts for every monument —', 'Ayrıca basılabilir: değiştirilebilir katmanlı (arazi, eş yükselti, kazılmış kalıntılar, surlar, caddeler, tur güzergâhı) ve her anıt için açıklamalı A2 duvar haritası —')} <b>{SITE}/#/wallmap</b></p>
       </Page>
 
       {/* timeline */}
@@ -158,10 +165,21 @@ export default function PrintGuide() {
       <Page n={next()} className="p-[12mm]">
         <h2 className="h2">{tr(lang, 'The street grid', 'Sokak dokusu')}</h2>
         <p className="mt-2 text-[10.5pt] leading-snug">{tr(lang,
-          'Hierapolis was laid out on a regular Hippodamian grid that the Romans kept: narrow side streets (stenopoi, about 3 m wide) cross the 13.5 m wide colonnaded plateia at right angles roughly every 35 m, and further streets run parallel to it. Excavators number the cross streets and letter the parallel ones — for example, Insula 104 lies between stenopoi 18 and 19 and plateiai D and E. Switch on “Whole city” in the 3D view to see every block rebuilt.',
-          'Hierapolis, Romalıların da koruduğu düzenli bir Hippodamik ızgara üzerine kuruldu: dar yan sokaklar (stenopoi, yaklaşık 3 m) 13,5 m genişliğindeki sütunlu plateiayı yaklaşık her 35 m’de bir dik açıyla keser, başka caddeler de ona paralel uzanır. Kazıcılar kesişen sokakları numaralar, paralel olanları harflerle gösterir — örneğin İnsula 104, 18 ve 19 numaralı stenopoi ile D ve E plateiaları arasındadır. Her adanın canlandırmasını görmek için 3B görünümde “Tüm kent”i açın.')}</p>
+          'Hierapolis was laid out on a regular Hippodamian grid that the Romans kept: narrow side streets (stenopoi, about 3 m wide) cross the 13.5 m wide colonnaded plateia at right angles roughly every 35 m, and further streets run parallel to it. Excavators number the cross streets and letter the parallel ones — for example, Insula 104 lies between stenopoi 18 and 19 and plateiai D and E. Switch on “City details” in the 3D view to see every block rebuilt.',
+          'Hierapolis, Romalıların da koruduğu düzenli bir Hippodamik ızgara üzerine kuruldu: dar yan sokaklar (stenopoi, yaklaşık 3 m) 13,5 m genişliğindeki sütunlu plateiayı yaklaşık her 35 m’de bir dik açıyla keser, başka caddeler de ona paralel uzanır. Kazıcılar kesişen sokakları numaralar, paralel olanları harflerle gösterir — örneğin İnsula 104, 18 ve 19 numaralı stenopoi ile D ve E plateiaları arasındadır. Her adanın canlandırmasını görmek için 3B görünümde “Kent ayrıntıları”nı açın.')}</p>
         <div className="mt-3 h-[178mm] overflow-hidden rounded border border-ink/30 bg-[#efe2c4]"><PlanSVG lang={lang} width={760} grid withLabels={false} fit /></div>
         <p className="mt-2 text-[8pt] italic opacity-70">{GRID.note[lang]}</p>
+      </Page>
+
+      {/* the city through time */}
+      <Page n={next()} className="p-[14mm]">
+        <h2 className="h2">{tr(lang, 'The city through time', 'Zaman içinde kent')}</h2>
+        <p className="mt-2 text-[10pt] leading-snug">{tr(lang,
+          'The same plan at four dates, showing the monuments of this guide that were standing or in use. Dates of construction and abandonment are approximate; several buildings were repaired or changed use many times.',
+          'Aynı plan dört farklı tarihte; bu rehberdeki anıtlardan ayakta olan ya da kullanılanları gösterir. Yapım ve terk tarihleri yaklaşıktır; pek çok yapı defalarca onarılmış ya da işlev değiştirmiştir.')}</p>
+        <div className="relative mt-4" style={{ height: '222mm' }}>
+          <PhaseMaps r={{ x: 0, y: 0, w: 182, h: 222 }} cols={2} theme="parchment" lang={lang} relief={relief} />
+        </div>
       </Page>
 
       {/* historic maps */}
@@ -234,8 +252,8 @@ export default function PrintGuide() {
       <Page n={next()} className="p-[16mm]">
         <h2 className="h2">{tr(lang, 'Ancient voices', 'Antik sesler')}</h2>
         <p className="mt-2 text-[10pt] leading-snug">{tr(lang,
-          'In the 3D view each place has its own soundscape, and selecting a temple, theatre, gate, market or church plays a short text in the language of its period: Greek in Hellenistic times, Latin under Rome, Byzantine Greek in the Christian city. Historically Hierapolis remained Greek-speaking under Rome; Latin was the language of the imperial administration. Pronunciation is approximate.',
-          '3B görünümde her mekânın kendi ses dokusu vardır; bir tapınak, tiyatro, kapı, pazar ya da kilise seçildiğinde dönemin dilinde kısa bir metin çalar: Helenistik dönemde Yunanca, Roma’da Latince, Hristiyan kentte Bizans Yunancası. Tarihsel olarak Hierapolis Roma döneminde de Yunanca konuşmayı sürdürdü; Latince imparatorluk yönetiminin diliydi. Telaffuz yaklaşıktır.')}</p>
+          'In the 3D view each place has its own soundscape, and selecting a temple, theatre, gate, market or church plays a short text in the language of its period: Greek in Hellenistic times, Koine Greek in the Roman city, Byzantine Greek in the Christian city. Hierapolis stayed Greek-speaking under Rome, so townspeople speak Koine; Latin is kept for officials and imperial dedications such as the one on the Frontinus Gate. Pronunciation is approximate.',
+          '3B görünümde her mekânın kendi ses dokusu vardır; bir tapınak, tiyatro, kapı, pazar ya da kilise seçildiğinde dönemin dilinde kısa bir metin çalar: Helenistik dönemde Yunanca, Roma kentinde Koine Yunancası, Hristiyan kentte Bizans Yunancası. Hierapolis Roma döneminde de Yunanca konuştuğu için kentliler Koine konuşur; Latince, Frontinus Kapısı’ndaki gibi görevliler ve imparatorluk ithafları için kullanılır. Telaffuz yaklaşıktır.')}</p>
         <div className="mt-4 space-y-3">
           {VOICES.map((v) => {
             const places = voicePlaces.filter((l) => Object.values(PLACE_SOUND[l.id].voice ?? {}).includes(v.id))

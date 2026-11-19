@@ -106,6 +106,7 @@ export function TopBar() {
           <div className="hidden sm:block"><TimeOfDayButton /></div>
           <SoundMenu />
           <a className="glass btn-ghost hidden sm:inline-flex" href="#/guide" target="_blank" rel="noreferrer" title={t('guide')}>⎙</a>
+          <a className="glass btn-ghost hidden sm:inline-flex" href="#/wallmap" target="_blank" rel="noreferrer" title={lang === 'en' ? 'A2 wall map' : 'A2 duvar haritası'}>◫</a>
           <button className="glass btn-ghost hidden sm:inline-flex" onClick={() => setQr((q) => !q)} title={t('scanToOpen')}>▦</button>
           <button className="glass btn-ghost h-9 w-9 justify-center p-0 text-lg sm:hidden" onClick={() => setMore((m) => !m)} aria-expanded={more} aria-label="menu">⋯</button>
         </div>
@@ -134,6 +135,7 @@ export function TopBar() {
               <div className="flex gap-2 border-t border-white/10 pt-3">
                 <a className="btn-ghost flex-1 justify-center rounded-xl border border-white/15" href="#/guide">⎙ {t('guide')}</a>
                 <a className="btn-ghost flex-1 justify-center rounded-xl border border-white/15" href="#/poster">▭ {lang === 'en' ? 'Posters' : 'Posterler'}</a>
+                <a className="btn-ghost flex-1 justify-center rounded-xl border border-white/15" href="#/wallmap">▦ {lang === 'en' ? 'Wall map' : 'Duvar haritası'}</a>
               </div>
             </div>
           </div>

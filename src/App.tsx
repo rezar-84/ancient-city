@@ -25,6 +25,7 @@ import { useT } from './i18n'
 const PrintGuide = lazy(() => import('./guide/PrintGuide'))
 const ARViewer = lazy(() => import('./ar/ARViewer'))
 const Posters = lazy(() => import('./guide/Posters'))
+const WallMap = lazy(() => import('./guide/WallMap'))
 
 function useHashRoute() {
   const [hash, setHash] = useState(window.location.hash)
@@ -83,6 +84,9 @@ export default function App() {
 
   if (hash.startsWith('#/guide')) {
     return <Suspense fallback={null}><PrintGuide /></Suspense>
+  }
+  if (hash.startsWith('#/wallmap')) {
+    return <Suspense fallback={null}><WallMap /></Suspense>
   }
   if (hash.startsWith('#/poster')) {
     return <Suspense fallback={null}><Posters /></Suspense>

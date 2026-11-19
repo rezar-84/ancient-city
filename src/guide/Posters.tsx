@@ -48,6 +48,7 @@ export default function Posters() {
         <div className="flex items-center gap-2">
           <a href="#/" className="btn-ghost">← Hierapolis 3D</a>
           <a href="#/guide" className="btn-ghost">⎙ {t('guide')}</a>
+          <a href="#/wallmap" className="btn-ghost">▦ {tr(lang, 'A2 wall map', 'A2 duvar haritası')}</a>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {(['overview', 'plan', 'timeline'] as Kind[]).map((k) => (
@@ -89,9 +90,9 @@ export default function Posters() {
                 <ul className="mt-[0.6em] space-y-[0.4em] text-[1.1em] leading-snug">
                   <li>◆ {tr(lang, '17 monuments rebuilt on the real terrain, with the whole street grid', 'Gerçek arazi üzerinde yeniden kurulan 17 anıt ve tüm sokak dokusu')}</li>
                   <li>◆ {tr(lang, 'Ancient and today views, archaeological plan with a timeline', 'Antik ve bugünkü görünümler, zaman çizelgeli arkeolojik plan')}</li>
-                  <li>◆ {tr(lang, 'Narrated tour in English and Turkish; places speak Greek and Latin', 'İngilizce ve Türkçe anlatımlı tur; mekânlar Yunanca ve Latince konuşur')}</li>
+                  <li>◆ {tr(lang, 'Narrated tour in English and Turkish; townspeople speak Greek, officials Latin', 'İngilizce ve Türkçe anlatımlı tur; kentliler Yunanca, görevliler Latince konuşur')}</li>
                   <li>◆ {tr(lang, 'Put the theatre on your table in AR', 'Tiyatroyu AR ile masanıza koyun')}</li>
-                  <li>◆ {tr(lang, 'Printable visitor guide and posters', 'Yazdırılabilir ziyaretçi rehberi ve posterler')}</li>
+                  <li>◆ {tr(lang, 'Printable visitor guide, posters and an A2 layered wall map', 'Yazdırılabilir ziyaretçi rehberi, posterler ve katmanlı A2 duvar haritası')}</li>
                 </ul>
               </div>
               <div className="min-h-0 overflow-hidden rounded-[0.5em] border border-gold/40 bg-[#efe2c4]"><PlanSVG lang={lang} width={520} withLabels={false} fit /></div>
