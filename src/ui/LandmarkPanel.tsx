@@ -44,7 +44,7 @@ export function LandmarkPanel() {
     >
       {l && (
         <div>
-          <Gallery key={l.id + lang} renders={l.renders ?? []} photos={l.images} name={lname(l, lang, era)} />
+          <Gallery key={l.id + lang} renders={l.renders ?? []} paintings={l.paintings ?? []} photos={l.images} name={lname(l, lang, era)} />
           <div className="p-5 sm:p-6">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -102,12 +102,15 @@ export function LandmarkPanel() {
   )
 }
 
-function Gallery({ renders, photos, name }: { renders: string[]; photos: Img[]; name: string }) {
+function Gallery({ renders, paintings, photos, name }: { renders: string[]; paintings: string[]; photos: Img[]; name: string }) {
   const t = useT()
   const today = photos.filter((p) => p.kind !== 'archive')
   const archive = photos.filter((p) => p.kind === 'archive')
   const tabs = [
-    { id: 'render', label: '◭ ' + t('tabRender'), items: renders.map((src) => ({ src, credit: t('reconstruction') }) as Img) },
+    { id: 'render', label: '◭ ' + t('tabRender'), items: [
+      ...renders.map((src) => ({ src, credit: t('reconstruction') }) as Img),
+      ...paintings.map((src) => ({ src, credit: t('aiPainting') }) as Img),
+    ] },
     { id: 'today', label: '◉ ' + t('tabToday'), items: today },
     { id: 'archive', label: '✎ ' + t('tabArchive'), items: archive },
   ].filter((x) => x.items.length > 0)

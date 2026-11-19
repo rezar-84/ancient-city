@@ -27,6 +27,8 @@ export interface Landmark {
   images: Img[]
   /** reconstruction renders captured from the 3D scene (public/renders) */
   renders?: string[]
+  /** AI-generated period paintings (public/art), shown after the renders and labelled as illustrations */
+  paintings?: string[]
   sources: Source[]
   /** procedural builder from src/scene/generators (BUILDERS key) */
   builder?: string

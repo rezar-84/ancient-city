@@ -314,7 +314,15 @@ const base: Landmark[] = [
   },
 ]
 
+/** Interpretive period paintings (Google Stitch, prompts in the "Hierapolis art" Stitch projects). */
+const PAINTINGS: Record<string, string[]> = {
+  ploutonion: ['/art/ploutonion-rite.jpg'],
+  theatre: ['/art/theatre-festival.jpg'],
+  'frontinus-street': ['/art/plateia-roman.jpg'],
+}
+
 export const LANDMARKS: Landmark[] = base.map((l) => ({
   ...l,
+  paintings: PAINTINGS[l.id],
   images: IMAGES[l.id] ?? l.images,
   renders: l.builder ? [`/renders/${l.id}.jpg`, `/renders/${l.id}-2.jpg`] : [], audio: { en: audioIf(`/audio/en/${l.id}.mp3`), tr: audioIf(`/audio/tr/${l.id}.mp3`) } }))

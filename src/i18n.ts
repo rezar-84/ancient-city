@@ -52,6 +52,7 @@ const STRINGS = {
   zoomOut: { en: 'Zoom out', tr: 'Uzaklaştır' },
   resetView: { en: 'Reset view', tr: 'Görünümü sıfırla' },
   author: { en: 'Created by Ferial Ara · Master’s programme, Yaşar University, İzmir · Fall 2026', tr: 'Hazırlayan: Ferial Ara · Yüksek Lisans, Yaşar Üniversitesi, İzmir · Güz 2026' },
+  aiPainting: { en: 'AI-generated illustration · an interpretation, not a record', tr: 'Yapay zekâ ile üretilmiş resim · bir yorumdur, belge değildir' },
   tabRender: { en: '3D reconstruction', tr: '3B canlandırma' },
   tabToday: { en: 'Today', tr: 'Bugün' },
   tabArchive: { en: 'Archive & finds', tr: 'Arşiv ve buluntular' },
