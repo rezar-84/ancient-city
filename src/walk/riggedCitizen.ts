@@ -126,8 +126,12 @@ function makeOutfit(body: THREE.SkinnedMesh, era: Era, palette: Palette, gender:
   const keep: number[] = []
   for (let i = 0; i < position.count; i += 3) {
     const y = (position.getY(i) + position.getY(i + 1) + position.getY(i + 2)) / 3
+    const cx = (position.getX(i) + position.getX(i + 1) + position.getX(i + 2)) / 3
+    const cz = (position.getZ(i) + position.getZ(i + 1) + position.getZ(i + 2)) / 3
     const x = Math.max(Math.abs(position.getX(i)), Math.abs(position.getX(i + 1)), Math.abs(position.getX(i + 2)))
-    if (y > height * 0.45 && y < height * 0.845 && x < sleeveSpan) keep.push(i, i + 1, i + 2)
+    // Keep full shoulder coverage up to 0.885*height while opening a clean collar around the neck
+    const inNeck = y > height * 0.835 && Math.hypot(cx, cz) < height * 0.062
+    if (y > height * 0.45 && y < height * 0.885 && x < sleeveSpan && !inNeck) keep.push(i, i + 1, i + 2)
   }
   const top = new THREE.BufferGeometry()
   for (const key of ['position', 'normal', 'skinIndex', 'skinWeight']) {
@@ -177,9 +181,6 @@ function makeOutfit(body: THREE.SkinnedMesh, era: Era, palette: Palette, gender:
   const pelvis = body.skeleton.bones.findIndex(b => b.name === 'pelvis')
   const spine1 = body.skeleton.bones.findIndex(b => b.name === 'spine_01')
   const spine2 = body.skeleton.bones.findIndex(b => b.name === 'spine_02')
-  const headIdx = body.skeleton.bones.findIndex(b => b.name === 'Head')
-  const armL = body.skeleton.bones.findIndex(b => b.name === 'lowerarm_l')
-  const handR = body.skeleton.bones.findIndex(b => b.name === 'hand_r')
   const left = body.skeleton.bones.findIndex(b => b.name === 'thigh_l'), right = body.skeleton.bones.findIndex(b => b.name === 'thigh_r')
   for (let i = 0; i < sp.count; i++) {
     const x = sp.getX(i), y = sp.getY(i), z = sp.getZ(i)
@@ -245,24 +246,43 @@ function makeOutfit(body: THREE.SkinnedMesh, era: Era, palette: Palette, gender:
   const mantle = makeRigidSkinned(mantleGeo, spine2 >= 0 ? spine2 : pelvis, body.skeleton, body.bindMatrix, trim)
 
   // Fitted shoulder cape (paenula / birrus) resting from neck collar over shoulders (pilgrims & Byzantine clergy)
-  const capeGeo = new THREE.CylinderGeometry(waistX * 0.56, waistX * 1.18, height * 0.18, 18, 1, true)
-    .scale(1, 1, 0.82)
-    .translate(0, height * 0.785, centerZ - 0.008)
+  const capeGeo = new THREE.CylinderGeometry(waistX * 0.60, waistX * 1.32, height * 0.16, 18, 1, true)
+    .scale(1.06, 1, 1.15)
+    .translate(0, height * 0.795, centerZ + 0.018)
   const cape = makeRigidSkinned(capeGeo, spine2 >= 0 ? spine2 : pelvis, body.skeleton, body.bindMatrix, trim)
 
-  // Open-front head veil / monastic cowl: covers crown, back, and temples while keeping the face (+Z) completely open
-  const veilGeo = new THREE.SphereGeometry(height * 0.078, 14, 8, Math.PI * 0.82, Math.PI * 1.36, 0, Math.PI * 0.78)
-    .scale(1.02, 1.18, 1.08)
-    .translate(0, height * 0.905, centerZ - 0.012)
-  const veil = makeRigidSkinned(veilGeo, headIdx >= 0 ? headIdx : spine2, body.skeleton, body.bindMatrix, gender === 'f' && era === 'byzantine' ? trim : cloth)
+  const headBone = body.skeleton.bones.find(b => b.name === 'Head')
+  const lowerArmLBone = body.skeleton.bones.find(b => b.name === 'lowerarm_l')
+  const handRBone = body.skeleton.bones.find(b => b.name === 'hand_r')
+  const boneAttachments: THREE.Mesh[] = []
+  const attachToBone = (bone: THREE.Bone | undefined, geo: THREE.BufferGeometry, mat: THREE.Material, pos: [number, number, number], rot: [number, number, number] = [0, 0, 0]) => {
+    geo.computeVertexNormals()
+    const m = new THREE.Mesh(geo, mat)
+    m.position.set(...pos)
+    m.rotation.set(...rot)
+    m.castShadow = m.receiveShadow = true
+    m.frustumCulled = false
+    m.visible = false
+    if (bone) bone.add(m)
+    boneAttachments.push(m)
+    return m
+  }
 
-  // Soldier: scale/lamellar cuirass + INDEPENDENT military equipment belt (cingulum militare with pteruges) + helmet + spear + Byzantine/Greek shield
+  // Open-front head veil / monastic cowl attached directly to Head bone so it tracks head turns cleanly without covering the face
+  const veilGeo = new THREE.SphereGeometry(0.132, 16, 10, Math.PI * 0.78, Math.PI * 1.44, 0, Math.PI * 0.80)
+    .scale(1.02, 1.16, 1.06)
+  const veilMat = era === 'byzantine' && gender === 'm'
+    ? new THREE.MeshStandardMaterial({ color: '#3b332c', roughness: 0.92, side: THREE.DoubleSide })
+    : (gender === 'f' && era === 'byzantine' ? trim : cloth)
+  const veil = attachToBone(headBone, veilGeo, veilMat, [0, 0.088, -0.022])
+
+  // Soldier: scale/lamellar cuirass + INDEPENDENT military equipment belt (cingulum militare with pteruges) + bone-attached helmet, spear & shield
   const cuirassGeo = new THREE.CylinderGeometry(waistX * 1.14, waistX * 1.06, height * 0.23, 18, 1, true)
     .scale(1, 1, (waistZ / waistX) * 1.06)
     .translate(0, height * 0.725, centerZ)
   const cuirass = makeRigidSkinned(cuirassGeo, spine2 >= 0 ? spine2 : pelvis, body.skeleton, body.bindMatrix, metalMat)
 
-  // Independent military equipment belt fitted over hip crest (0.565 * height) with hanging pteruges apron strips
+  // Independent military equipment belt fitted over hip crest (0.568 * height) with hanging pteruges apron strips
   const cingulumParts: THREE.BufferGeometry[] = [
     new THREE.CylinderGeometry(1, 1, 0.046, 20, 1, true)
       .scale(waistX * 1.11, 1, waistZ * 1.12)
@@ -275,21 +295,27 @@ function makeOutfit(body: THREE.SkinnedMesh, era: Era, palette: Palette, gender:
   const cingulumGeo = mergeSimple(cingulumParts)
   const cingulum = makeRigidSkinned(cingulumGeo, pelvis, body.skeleton, body.bindMatrix, leatherMat)
 
-  const helmetGeo = new THREE.SphereGeometry(height * 0.072, 12, 6, 0, Math.PI * 2, 0, Math.PI * 0.58)
-    .scale(0.96, 1.08, 1.06)
-    .translate(0, height * 0.935, centerZ + 0.008)
-  const helmet = makeRigidSkinned(helmetGeo, headIdx >= 0 ? headIdx : spine2, body.skeleton, body.bindMatrix, metalMat)
-
-  const spearGeo = mergeSimple([
-    new THREE.CylinderGeometry(0.014, 0.016, height * 1.18, 6).translate(-waistX * 1.48, height * 0.58, centerZ + 0.08),
-    new THREE.ConeGeometry(0.028, 0.16, 4).translate(-waistX * 1.48, height * 1.21, centerZ + 0.08),
+  // Helmet attached directly to Head bone: bronze/iron dome + neck guard + brow band
+  const helmetGeo = mergeSimple([
+    new THREE.SphereGeometry(0.132, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.56).scale(0.98, 1.06, 1.08),
+    new THREE.CylinderGeometry(0.134, 0.146, 0.055, 14, 1, true, Math.PI * 0.65, Math.PI * 0.7).translate(0, -0.035, -0.015),
   ])
-  const spear = makeRigidSkinned(spearGeo, handR >= 0 ? handR : spine2, body.skeleton, body.bindMatrix, woodMat)
+  const helmet = attachToBone(headBone, helmetGeo, metalMat, [0, 0.118, -0.006])
 
-  const shieldGeo = new THREE.CylinderGeometry(height * 0.19, height * 0.19, 0.025, 14)
-    .rotateZ(Math.PI / 2)
-    .translate(waistX * 1.42, height * 0.64, centerZ + 0.05)
-  const shield = makeRigidSkinned(shieldGeo, armL >= 0 ? armL : spine2, body.skeleton, body.bindMatrix, trim)
+  // Spear gripped directly inside hand_r palm, standing upright (+Y rotated ~+150° around X so tip points cleanly UP)
+  const spearGeo = mergeSimple([
+    new THREE.CylinderGeometry(0.015, 0.017, 1.95, 8).translate(0, 0.25, 0),
+    new THREE.ConeGeometry(0.034, 0.22, 4).translate(0, 1.32, 0),
+    new THREE.CylinderGeometry(0.019, 0.019, 0.08, 8).translate(0, -0.74, 0),
+  ])
+  const spear = attachToBone(handRBone, spearGeo, woodMat, [0.02, 0.075, 0.025], [Math.PI * 0.82, 0, 0.06])
+
+  // Round/oval buckler shield strapped flush to the outer face (-X) of lowerarm_l with central boss
+  const shieldGeo = mergeSimple([
+    new THREE.CylinderGeometry(0.32, 0.32, 0.028, 18).rotateZ(Math.PI / 2),
+    new THREE.SphereGeometry(0.075, 10, 6, 0, Math.PI * 2, 0, Math.PI * 0.5).rotateZ(Math.PI / 2).translate(-0.015, 0, 0),
+  ])
+  const shield = attachToBone(lowerArmLBone, shieldGeo, trim, [-0.072, 0.13, 0.015], [0, 0.12, 0])
 
   // Porter: crossed hemp rope harness + dorsal Phrygian amphora / woven pack basket
   const porterGeo = mergeSimple([
@@ -302,12 +328,11 @@ function makeOutfit(body: THREE.SkinnedMesh, era: Era, palette: Palette, gender:
   ])
   const porterLoad = makeRigidSkinned(porterGeo, spine2 >= 0 ? spine2 : spine1, body.skeleton, body.bindMatrix, woodMat)
 
-  // Pilgrim: wooden walking staff + eulogia ampulla pouch at hip
-  const pilgrimGeo = mergeSimple([
-    new THREE.CylinderGeometry(0.015, 0.018, height * 0.92, 6).translate(-waistX * 1.42, height * 0.46, centerZ + 0.10),
-    new THREE.CylinderGeometry(0.036, 0.036, 0.022, 8).rotateX(Math.PI / 2).translate(waistX * 1.05, height * 0.54, centerZ + 0.04),
-  ])
-  const pilgrimGear = makeRigidSkinned(pilgrimGeo, pelvis, body.skeleton, body.bindMatrix, woodMat)
+  // Pilgrim: walking staff gripped in hand_r + eulogia ampulla pouch at hip
+  const pilgrimStaffGeo = new THREE.CylinderGeometry(0.016, 0.020, 1.55, 8).translate(0, 0.10, 0)
+  const pilgrimStaff = attachToBone(handRBone, pilgrimStaffGeo, woodMat, [0.02, 0.075, 0.025], [Math.PI * 0.82, 0, 0.06])
+  const pilgrimPouchGeo = new THREE.CylinderGeometry(0.038, 0.038, 0.024, 10).rotateX(Math.PI / 2).translate(waistX * 1.04, height * 0.55, centerZ + 0.04)
+  const pilgrimGear = makeRigidSkinned(pilgrimPouchGeo, pelvis, body.skeleton, body.bindMatrix, leatherMat)
 
   // Merchant belt coin pouch (marsupium) hanging cleanly at the right hip
   const pouchGeo = new THREE.SphereGeometry(0.042, 10, 8)
@@ -315,18 +340,20 @@ function makeOutfit(body: THREE.SkinnedMesh, era: Era, palette: Palette, gender:
     .translate(-waistX * 1.04, height * 0.565, centerZ + 0.035)
   const merchantPouch = makeRigidSkinned(pouchGeo, pelvis, body.skeleton, body.bindMatrix, leatherMat)
 
-  const extraMeshes = [mantle, cape, veil, cuirass, cingulum, helmet, spear, shield, porterLoad, pilgrimGear, merchantPouch]
-  extraMeshes.forEach(m => { m.visible = false })
+  const extraMeshes = [mantle, cape, cuirass, cingulum, porterLoad, pilgrimGear, merchantPouch]
+  const allExtras: THREE.Mesh[] = [...extraMeshes, ...boneAttachments]
+  allExtras.forEach(m => { m.visible = false })
 
   return {
     baseMeshes,
     extraMeshes,
-    materials: [cloth, trim, leatherMat, metalMat, woodMat],
+    boneAttachments,
+    materials: veilMat !== trim && veilMat !== cloth ? [cloth, trim, leatherMat, metalMat, woodMat, veilMat] : [cloth, trim, leatherMat, metalMat, woodMat],
     clothMat: cloth,
     trimMat: trim,
     uWeave,
     setRoleVisuals(role: CitizenRole, age: AgeGroup = 'adult') {
-      extraMeshes.forEach(m => { m.visible = false })
+      allExtras.forEach(m => { m.visible = false })
       baseMeshes[2].visible = role !== 'soldier' // soldier uses independent cingulum equipment belt
       const isYouth = age === 'child' || age === 'adolescent'
       if (role === 'resident') {
@@ -341,10 +368,11 @@ function makeOutfit(body: THREE.SkinnedMesh, era: Era, palette: Palette, gender:
         cingulum.visible = true
         helmet.visible = true
         spear.visible = true
-        shield.visible = era !== 'roman'
+        shield.visible = true
       } else if (role === 'pilgrim') {
         cape.visible = !isYouth
         pilgrimGear.visible = !isYouth
+        pilgrimStaff.visible = !isYouth
         veil.visible = !isYouth && gender === 'f' && era === 'byzantine'
       } else if (role === 'priest') {
         mantle.visible = era !== 'byzantine'
@@ -707,7 +735,7 @@ export function instantiateCitizen(model: GLTF, motions: GLTF, era: Era, palette
     dispose() {
       secondary.dispose(); mixer.stopAllAction(); mixer.uncacheRoot(content)
       ownedMaterials.forEach(m => m.dispose()); skeletons.forEach(s => s.dispose())
-      ;[...outfit.baseMeshes, ...outfit.extraMeshes].forEach(m => m.geometry.dispose())
+      ;[...outfit.baseMeshes, ...outfit.extraMeshes, ...outfit.boneAttachments].forEach(m => { m.removeFromParent(); m.geometry.dispose() })
     },
   }
 }
