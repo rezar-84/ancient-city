@@ -50,6 +50,26 @@ BEDS.push({ id: 'splash', seconds: 1.2, loop: false, prompt: 'a person stepping 
 for (let i = 1; i <= 2; i++) BEDS.push({ id: `swim-${i}`, seconds: 1.1, loop: false, prompt: 'one slow breaststroke swimming stroke in calm warm water, gentle swish and drip, close, quiet' + (i > 1 ? ', variation 2' : '') })
 BEDS.push({ id: 'land', seconds: 0.6, loop: false, prompt: 'a person landing on both feet after a small jump onto stone, soft thud with sandal slap, close, short' })
 
+// time of day (city-wide nature beds and occasional one-shots)
+BEDS.push(
+  { id: 'dawn-birds', seconds: 20, loop: true, prompt: 'early morning dawn chorus in a Mediterranean hillside town, many songbirds, blackbirds and sparrows singing, a dove cooing, calm and fresh, soft distant, no insects, no people, no music, no modern sounds' },
+  { id: 'rooster', seconds: 3, loop: false, prompt: 'a single rooster crowing once in the distance at dawn in an old village, natural, slight outdoor echo' },
+  { id: 'cicadas-day', seconds: 20, loop: true, prompt: 'hot Mediterranean summer afternoon, steady chorus of cicadas in olive and pine trees, gentle and even, distant, soft breeze, no birds, no people, no music, no modern sounds' },
+  { id: 'swifts-dusk', seconds: 20, loop: true, prompt: 'warm summer evening at dusk over an old stone town, flocks of swifts screaming as they swoop overhead, occasional distant swallows, soft breeze, calm, no music, no modern sounds' },
+  { id: 'crickets-night', seconds: 20, loop: true, prompt: 'quiet warm Mediterranean summer night in the countryside, steady chirping field crickets, soft and calm, very gentle breeze, no birds, no people, no music, no modern sounds' },
+  { id: 'owl', seconds: 3, loop: false, prompt: 'a single scops owl or tawny owl hooting softly at night in the distance, natural outdoor echo' },
+)
+// player actions in walk mode
+BEDS.push(
+  { id: 'longjump-whoosh', seconds: 1, loop: false, prompt: 'a short airy body whoosh of a person leaping far through the air, wool tunic fluttering, close, subtle, no impact' },
+  { id: 'roll-rustle', seconds: 1, loop: false, prompt: 'a person doing a quick forward roll on stone paving, wool cloth rustle and a soft body thud on stone, close, short' },
+  { id: 'wave-swish', seconds: 0.8, loop: false, prompt: 'a soft swish of a wool tunic sleeve as a person waves an arm, close, very subtle, short cloth movement' },
+  { id: 'discover-chime', seconds: 2, loop: false, prompt: 'a soft gentle chord plucked on an ancient Greek kithara lyre with gut strings, warm, short, ringing decay, calm discovery cue, no other instruments' },
+  { id: 'travel-arrive', seconds: 2, loop: false, prompt: 'a soft airy whoosh fading out, then a few leather sandal footsteps settling to a stop on stone paving, close, calm' },
+  { id: 'march-patrol', seconds: 8, loop: true, prompt: 'four Roman soldiers marching in step on stone paving, hobnailed leather sandals crunching rhythmically, light armour and belt fittings clinking, steady even pace, outdoor, no voices, no music' },
+  { id: 'torch-crackle', seconds: 10, loop: true, prompt: 'a burning oil and pitch torch flame crackling and fluttering gently in a light night breeze, close, steady, no other sounds' },
+)
+
 export const VOICES: VoiceLine[] = [
   {
     id: 'apollo-grc', lang: 'grc', voice: 'priest', source: 'Homeric Hymn 21, To Apollo',

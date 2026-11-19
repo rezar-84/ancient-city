@@ -6,13 +6,59 @@ import { LANG_LABEL, PLACE_SOUND, langForYear, type VoiceLine } from '../content
 import { getTerrain } from '../scene/terrainData'
 import { rig, flightListeners } from '../scene/camera'
 import { walk } from '../walk/WalkControls'
-import { ensureAudio, onVoice, playAmbientOneShot, playOneShot, playUi, playVoice, setBedLevels, setMusic, stopVoice } from './engine'
+import * as CrowdModule from '../walk/Crowd'
+import { ensureAudio, musicAvailable, onVoice, playAmbientOneShot, playOneShot, playUi, playVoice, setBedLevels, setMusic, stopVoice, type Layer } from './engine'
+import { setBreezeLevel } from '../ui/ambient'
 import { GRID } from '../content/grid'
+import { TORCH_SPOTS } from '../scene/Torches'
 
 const smooth = (a: number, b: number, x: number) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t) }
 /** beds that also exist in today's landscape (nature), the rest are the ancient city */
 const NATURE = new Set(['spring', 'necropolis-wind'])
 const CHRISTIAN = new Set(['martyrium', 'philip-church', 'cathedral'])
+
+// ---- time of day ----------------------------------------------------------------------------
+type Band = 'dawn' | 'day' | 'dusk' | 'night'
+/** dawn 5–8, day 8–17, dusk 17–20, night 20–5 */
+function bandOf(hour: number): Band {
+  const h = ((hour % 24) + 24) % 24
+  return h >= 5 && h < 8 ? 'dawn' : h >= 8 && h < 17 ? 'day' : h >= 17 && h < 20 ? 'dusk' : 'night'
+}
+const BAND_START: Record<Band, number> = { dawn: 5, day: 8, dusk: 17, night: 20 }
+const BAND_END: Record<Band, number> = { dawn: 8, day: 17, dusk: 20, night: 29 }
+/** soft 0..1 membership of the hour in a band, crossfading over ±0.5 h at the edges */
+function bandWeight(band: Band, hour: number) {
+  let h = ((hour % 24) + 24) % 24
+  if (band === 'night' && h < 12) h += 24
+  return smooth(BAND_START[band] - 0.5, BAND_START[band] + 0.5, h) * (1 - smooth(BAND_END[band] - 0.5, BAND_END[band] + 0.5, h))
+}
+/** city-wide nature bed per band and its level on the ambience layer */
+const NATURE_BED: Record<Band, [string, number]> = {
+  dawn: ['dawn-birds', 0.55], day: ['cicadas-day', 0.32], dusk: ['swifts-dusk', 0.45], night: ['crickets-night', 0.4],
+}
+const BANDS: Band[] = ['dawn', 'day', 'dusk', 'night']
+
+// ---- place music ----------------------------------------------------------------------------
+/** landmark → score cue while you stand near it (explore and walk) */
+function placeTrack(id: string, ctx: { ancient: boolean; band: Band; year: number }): string | null {
+  switch (id) {
+    case 'theatre': return ctx.ancient && ctx.year < 330 ? 'theatre-festival' : null
+    case 'apollo': return 'sacred-hellenistic'
+    case 'ploutonion': return 'tension'
+    case 'martyrium': case 'philip-church': case 'cathedral': return 'byzantine'
+    case 'agora': case 'frontinus-street': return ctx.ancient && ctx.band === 'day' ? 'market-day' : null
+    case 'baths': case 'antique-pool': return 'baths-calm'
+    case 'necropolis': return 'necropolis-sombre'
+    default: return null
+  }
+}
+const PLACE_ENTER = 60, PLACE_LEAVE = 80, DWELL_MS = 20000
+
+/** the marching squad (exported by the crowd once patrols exist; absent before) */
+const patrolState = () => (CrowdModule as unknown as { PATROL_STATE?: { x: number; z: number; active: boolean } }).PATROL_STATE
+/** action hooks added to the walk state for rolls and long jumps (absent on older builds) */
+const walkExt = walk as typeof walk & Partial<{ onRoll: Set<() => void>; onLongJump: Set<() => void> }>
+const BED_LAYER: Record<string, Layer> = { 'dawn-birds': 'ambience', 'cicadas-day': 'ambience', 'swifts-dusk': 'ambience', 'crickets-night': 'ambience' }
 
 /** Drives the place soundscape from camera position, selection, mode and era. No DOM output except
  *  the caption shown while an ancient voice plays. */
@@ -22,6 +68,7 @@ export function PlaceAudio() {
   const mode = useApp((s) => s.mode)
   const [voice, setVoice] = useState<VoiceLine | null>(null)
   const pos = useRef<Map<string, [number, number]>>(new Map())
+  const discovered = useRef<Set<string>>(new Set())
 
   useEffect(() => onVoice(setVoice), [])
 
@@ -42,7 +89,7 @@ export function PlaceAudio() {
     const id = window.setInterval(() => {
       const t = getTerrain(), ctl = rig.controls, cam = rig.camera
       const s = useApp.getState()
-      if (!t || !ctl || !cam || s.mode === 'intro') { setBedLevels({}); return }
+      if (!t || !ctl || !cam || s.mode === 'intro') { setBedLevels({}); setBreezeLevel(1); return }
       if (!pos.current.size) for (const l of LANDMARKS) pos.current.set(l.id, t.toLocal(l.lat, l.lon))
       const walking = s.mode === 'walk'
       const zoom = walking ? 120 : cam.position.distanceTo(ctl.target)
@@ -70,27 +117,114 @@ export function PlaceAudio() {
         const inCity = smooth(750, 350, Math.hypot(focusPt.x - mx, focusPt.z - mz))
         add('street', inCity * smooth(1600, 300, zoom) * 0.4)
       }
-      setBedLevels(levels)
+      // time of day: one nature bed per band, crossfaded at the band edges; the breeze drops at night
+      for (const b of BANDS) {
+        const w = bandWeight(b, s.hour)
+        if (w > 0.01) { const [bed, lv] = NATURE_BED[b]; levels[bed] = lv * w * (s.mode === 'plan' ? 0.5 : 1) }
+      }
+      setBreezeLevel(1 - 0.55 * bandWeight('night', s.hour))
+      // a marching patrol nearby, panned to its side of the camera
+      const pan: Record<string, number> = {}
+      const patrol = patrolState()
+      if (walking && patrol?.active && s.era === 'ancient') {
+        const dx = patrol.x - walk.x, dz = patrol.z - walk.z, d = Math.hypot(dx, dz)
+        if (d < 40) {
+          levels['march-patrol'] = smooth(40, 6, d) * 0.7
+          const m = cam.matrixWorld.elements // camera right vector = first column
+          const rl = Math.hypot(m[0], m[2]) || 1
+          pan['march-patrol'] = d > 0.5 ? ((dx * m[0] + dz * m[2]) / (d * rl)) * 0.8 : 0
+        }
+      }
+      // lit torches crackle at dusk and night when you walk past one, panned like the patrol
+      const lit = Math.max(bandWeight('dusk', s.hour), bandWeight('night', s.hour))
+      if (walking && lit > 0.05 && s.era === 'ancient') {
+        let best = Infinity, bx = 0, bz = 0
+        for (const [tx, , tz] of TORCH_SPOTS.list) {
+          const d = Math.hypot(tx - walk.x, tz - walk.z)
+          if (d < best) { best = d; bx = tx; bz = tz }
+        }
+        if (best < 12) {
+          levels['torch-crackle'] = smooth(12, 1.5, best) * 0.55 * lit
+          const m = cam.matrixWorld.elements, rl = Math.hypot(m[0], m[2]) || 1
+          pan['torch-crackle'] = best > 0.5 ? (((bx - walk.x) * m[0] + (bz - walk.z) * m[2]) / (best * rl)) * 0.8 : 0
+        }
+      }
+      // discovery: a soft kithara chord the first time you come within 25 m of each place this walk
+      if (!s.walkSession) discovered.current.clear()
+      if (walking && s.walkSession) {
+        for (const l of LANDMARKS) {
+          const p = pos.current.get(l.id)
+          if (!p || discovered.current.has(l.id)) continue
+          if (!(s.year >= l.built && (l.until === undefined || s.year <= l.until))) continue
+          if (Math.hypot(walk.x - p[0], walk.z - p[1]) < 25) { discovered.current.add(l.id); playOneShot('discover-chime', 'ui', 0.55); break }
+        }
+      }
+      setBedLevels(levels, { layer: BED_LAYER, pan })
     }, 120)
     return () => window.clearInterval(id)
   }, [])
 
-  // score: dramatic theme on the title and tour, exploration score otherwise, cues per place/era
+  // score: dramatic theme on the title and tour; in explore and walk a cue for the place you are at
+  // (hysteresis 60/80 m, at least 20 s per cue), otherwise a cue for the time of day
   const era = useApp((s) => s.era)
   const year = useApp((s) => s.year)
   useEffect(() => {
+    let place: string | null = null
+    let roaming: string | null = null, roamingSince = -Infinity
     const id = window.setInterval(() => {
       const s = useApp.getState()
-      let track: string | null = 'explore'
-      if (s.mode === 'intro' || s.mode === 'tour') track = 'theme'
-      else if (s.selected === 'ploutonion') track = 'tension'
-      else if (s.selected && CHRISTIAN.has(s.selected)) track = 'byzantine'
-      else if (timeGated(s.mode) && s.year >= 330) track = 'byzantine'
-      else if (s.mode === 'choose') track = 'theme'
-      setMusic(track)
+      // the previous logic, also the fallback when a newer cue has no file yet
+      let base: string = 'explore'
+      if (timeGated(s.mode) && s.year >= 330) base = 'byzantine'
+      if (s.mode === 'intro' || s.mode === 'tour') { roaming = null; setMusic('theme'); return }
+      if (s.selected === 'ploutonion') { roaming = null; setMusic('tension'); return }
+      if (s.selected && CHRISTIAN.has(s.selected)) { roaming = null; setMusic('byzantine'); return }
+      if (s.mode === 'choose') { roaming = null; setMusic('theme'); return }
+      if (s.mode !== 'explore' && s.mode !== 'walk') { roaming = null; setMusic(base); return }
+
+      const t = getTerrain(), ctl = rig.controls, cam = rig.camera
+      const walking = s.mode === 'walk'
+      const band = bandOf(s.hour)
+      const gated = timeGated(s.mode)
+      // nearest existing landmark to the focus, with hysteresis
+      let next: string | null = null
+      if (t && (walking || (ctl && cam && cam.position.distanceTo(ctl.target) < 700))) {
+        if (!pos.current.size) for (const l of LANDMARKS) pos.current.set(l.id, t.toLocal(l.lat, l.lon))
+        const fx = walking ? walk.x : ctl!.target.x, fz = walking ? walk.z : ctl!.target.z
+        let best = Infinity
+        for (const l of LANDMARKS) {
+          const p = pos.current.get(l.id)
+          if (!p || (gated && !(s.year >= l.built && (l.until === undefined || s.year <= l.until)))) continue
+          const d = Math.hypot(fx - p[0], fz - p[1])
+          if (l.id === place && d < PLACE_LEAVE) { next = l.id; best = -1 }
+          else if (d < PLACE_ENTER && d < best) { next = l.id; best = d }
+        }
+      }
+      place = next
+      const cueCtx = { ancient: s.era === 'ancient', band, year: gated ? s.year : 150 }
+      let want = place ? placeTrack(place, cueCtx) : null
+      if (!want) {
+        want = band === 'dawn' ? 'dawn' : band === 'dusk' ? 'dusk' : band === 'night' ? 'night'
+          : gated && s.year >= 330 ? 'byzantine-secular' : 'explore'
+      }
+      // missing file ⇒ the previous logic's track (availability is checked once and cached)
+      if (musicAvailable(want) !== true) want = base
+      const now = performance.now()
+      if (want !== roaming && (roaming === null || now - roamingSince >= DWELL_MS)) { roaming = want; roamingSince = now }
+      setMusic(roaming)
     }, 400)
     return () => window.clearInterval(id)
   }, [])
+
+  /** the focus is inside the ancient city walls (roughly: near the main street axis) */
+  const cityNear = () => {
+    const t = getTerrain(), ctl = rig.controls
+    if (!t || !ctl) return false
+    const s = useApp.getState()
+    const fx = s.mode === 'walk' ? walk.x : ctl.target.x, fz = s.mode === 'walk' ? walk.z : ctl.target.z
+    const [ax, az] = t.toLocal(...GRID.axisFrom), [bx, bz] = t.toLocal(...GRID.axisTo)
+    return Math.hypot(fx - (ax + bx) / 2, fz - (az + bz) / 2) < 600
+  }
 
   // nature: now and then a soft gust of wind or distant birds, never constant
   useEffect(() => {
@@ -98,7 +232,14 @@ export function PlaceAudio() {
     const next = () => {
       t = window.setTimeout(() => {
         const s = useApp.getState()
-        if (s.mode !== 'intro') playAmbientOneShot(Math.random() < 0.6 || SKY.night > 0.5 ? 'gust' : 'birds', 0.5 + Math.random() * 0.4)
+        if (s.mode !== 'intro') {
+          const band = bandOf(s.hour), r = Math.random(), g = 0.5 + Math.random() * 0.4
+          // a rooster at dawn only inside the living city; an owl at night
+          const inCity = s.era === 'ancient' && (s.mode === 'walk' || s.mode === 'explore') && cityNear()
+          if (band === 'dawn' && inCity && r < 0.4) playAmbientOneShot('rooster', g * 0.8)
+          else if (band === 'night' && r < 0.35) playAmbientOneShot('owl', g * 0.7)
+          else playAmbientOneShot(r < 0.6 || SKY.night > 0.5 ? 'gust' : 'birds', g)
+        }
         next()
       }, 18000 + Math.random() * 30000)
     }
@@ -106,7 +247,7 @@ export function PlaceAudio() {
     return () => window.clearTimeout(t)
   }, [])
 
-  // walk mode: footsteps by surface, landing thud
+  // walk mode: footsteps by surface, landing thud, long jump / roll / greet / arrival
   useEffect(() => {
     let alt = 0
     const step = (surf: 'stone' | 'gravel' | 'grass' | 'water', k: number) => {
@@ -117,9 +258,19 @@ export function PlaceAudio() {
     const jump = () => playOneShot(`step-${walk.surface}-1`, 'places', 0.25, 0, 1.12)
     const splash = (k: number) => playOneShot('splash', 'places', 0.35 + 0.5 * k)
     const stroke = () => playOneShot(`swim-${1 + Math.floor(Math.random() * 2)}`, 'places', 0.45, 0, 0.94 + Math.random() * 0.12)
+    const longJump = () => playOneShot('longjump-whoosh', 'places', 0.6, 0, 0.95 + Math.random() * 0.1)
+    const roll = () => playOneShot('roll-rustle', 'places', 0.7, 0, 0.95 + Math.random() * 0.1)
+    const greet = () => { if (useApp.getState().mode === 'walk') playOneShot('wave-swish', 'places', 0.35) }
+    const arrive = () => playOneShot('travel-arrive', 'ui', 0.6)
     walk.onJump.add(jump)
     walk.onStep.add(step); walk.onLand.add(land); walk.onSplash.add(splash); walk.onStroke.add(stroke)
-    return () => { walk.onJump.delete(jump); walk.onStep.delete(step); walk.onLand.delete(land); walk.onSplash.delete(splash); walk.onStroke.delete(stroke) }
+    walkExt.onLongJump?.add(longJump); walkExt.onRoll?.add(roll)
+    window.addEventListener('walk:greet', greet); window.addEventListener('walk:arrive', arrive)
+    return () => {
+      walk.onJump.delete(jump); walk.onStep.delete(step); walk.onLand.delete(land); walk.onSplash.delete(splash); walk.onStroke.delete(stroke)
+      walkExt.onLongJump?.delete(longJump); walkExt.onRoll?.delete(roll)
+      window.removeEventListener('walk:greet', greet); window.removeEventListener('walk:arrive', arrive)
+    }
   }, [])
 
   // event sounds

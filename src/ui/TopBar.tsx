@@ -6,12 +6,14 @@ import { getVolume, onAmbientChange, setVolume } from './ambient'
 import type { Layer } from '../audio/engine'
 import { TimeOfDayButton, TimeOfDayPanel } from './TimeOfDay'
 
-export function LangSwitch() {
+/** `touch` gives each option a 44px hit target (walk HUD, character select on phones). */
+export function LangSwitch({ touch = false }: { touch?: boolean }) {
   const lang = useApp((s) => s.lang)
+  const size = touch ? ' min-h-11 min-w-11 px-3' : ' px-3 py-1'
   return (
-    <div className="glass flex rounded-full p-1 text-xs">
+    <div className="glass flex rounded-full p-1 text-xs" role="group" aria-label={lang === 'en' ? 'Language' : 'Dil'}>
       {(['en', 'tr'] as const).map((l) => (
-        <button key={l} className={lang === l ? 'btn-active px-3 py-1' : 'btn-ghost px-3 py-1'} onClick={() => useApp.getState().setLang(l)}>
+        <button key={l} aria-pressed={lang === l} className={(lang === l ? 'btn-active' : 'btn-ghost') + size} onClick={() => useApp.getState().setLang(l)}>
           {l.toUpperCase()}
         </button>
       ))}

@@ -1,5 +1,8 @@
 import type { InstancedBufferAttribute } from 'three';
 
+/** Highest valid pose id (POSE.roll = 11 in npcGeometry). */
+export const MAX_POSE = 11;
+
 /** Allocation-free per-frame two-pose blending. Times and duration are in seconds.
  * set() queues changes received mid-transition, avoiding discontinuous interruptions.
  * write() updates iPose and optionally iAnim.z; mark attributes needsUpdate once per batch.
@@ -11,7 +14,7 @@ export class PoseBlender {
   private readonly started: Float64Array;
   readonly duration: number;
   constructor(count: number, initialPose = 0, duration = 0.3) {
-    if (!Number.isInteger(count) || count < 0 || !Number.isFinite(duration) || duration <= 0 || !Number.isInteger(initialPose) || initialPose < 0 || initialPose > 10) throw new RangeError('Invalid pose blender configuration');
+    if (!Number.isInteger(count) || count < 0 || !Number.isFinite(duration) || duration <= 0 || !Number.isInteger(initialPose) || initialPose < 0 || initialPose > MAX_POSE) throw new RangeError('Invalid pose blender configuration');
     this.duration = duration;
     this.current = new Float32Array(count).fill(initialPose);
     this.previous = new Float32Array(count).fill(initialPose);
@@ -28,7 +31,7 @@ export class PoseBlender {
   }
   set(i: number, pose: number, now: number) {
     this.check(i, now);
-    if (!Number.isInteger(pose) || pose < 0 || pose > 10) throw new RangeError('Invalid pose');
+    if (!Number.isInteger(pose) || pose < 0 || pose > MAX_POSE) throw new RangeError('Invalid pose');
     this.pending[i] = pose; this.advance(i, now);
   }
   write(attr: InstancedBufferAttribute, i: number, now: number, anim?: InstancedBufferAttribute): number {

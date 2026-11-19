@@ -14,8 +14,15 @@ export type Palette = { cloth: THREE.Color; skin: THREE.Color; accent: THREE.Col
 export interface CitizenMotion {
   speed: number
   grounded: boolean
+  /** hold the raised-arm wave overlay while true (a rising edge also starts a 1.6 s wave) */
   wave: boolean
+  /** conversational hand gesture (Idle_Talking_Loop) while standing */
+  talk?: boolean
   look: number
+  /** roll progress 0..1 (absent or <0 = not rolling): the visual root tumbles 360° about the hips */
+  roll?: number
+  /** shared clock (s) so a marching file keeps the same stride phase */
+  syncTime?: number
   bend?: number
   reach?: number
   groundAt?: (x: number, z: number) => number
@@ -46,6 +53,26 @@ const SIM_STEP = 1 / 30
 const _hip = new THREE.Vector3(), _joint = new THREE.Vector3(), _ankle = new THREE.Vector3()
 const _tmp = new THREE.Vector3(), _fwd = new THREE.Vector3(), _delta = new THREE.Vector3()
 const _footRotation = new THREE.Quaternion()
+const _waveA = new THREE.Vector3(), _waveB = new THREE.Vector3(), _waveDir = new THREE.Vector3()
+const _waveRot = new THREE.Quaternion(), _waveFull = new THREE.Quaternion(), _waveWorld = new THREE.Quaternion(), _waveParent = new THREE.Quaternion(), _waveRoot = new THREE.Quaternion()
+const _rollQ = new THREE.Quaternion(), _rollPivot = new THREE.Vector3(), _rollTurned = new THREE.Vector3(), _xAxis = new THREE.Vector3(1, 0, 0)
+const IDENTITY_Q = new THREE.Quaternion()
+/** additive wave blend in/out time (s), and the fastest gait that still waves (m/s) */
+const WAVE_BLEND = 0.25, WAVE_MAX_SPEED = 2.6
+/** roll: Jump_Loop playback rate (tucked limbs), hip drop at mid-roll (m), spine/neck curl (rad) */
+const ROLL_CLIP_RATE = 1.6, ROLL_DROP = 0.45, ROLL_CURL = 0.55
+
+/** Rotate `bone` (world space) so its direction towards `child` moves `weight` of the way onto `dir`. */
+function aimBoneToward(bone: THREE.Object3D, child: THREE.Object3D, dir: THREE.Vector3, weight: number) {
+  bone.getWorldPosition(_waveA); child.getWorldPosition(_waveB)
+  _waveB.sub(_waveA)
+  if (_waveB.lengthSq() < 1e-10) return
+  _waveFull.setFromUnitVectors(_waveB.normalize(), dir)
+  _waveRot.slerpQuaternions(IDENTITY_Q, _waveFull, weight)
+  bone.getWorldQuaternion(_waveWorld); bone.parent!.getWorldQuaternion(_waveParent).invert()
+  bone.quaternion.copy(_waveParent.multiply(_waveRot).multiply(_waveWorld))
+  bone.updateWorldMatrix(false, true)
+}
 
 type Assets = { m: GLTF; f: GLTF; motions: GLTF }
 let assets: Assets | null = null
@@ -332,12 +359,19 @@ function makeOutfit(body: THREE.SkinnedMesh, era: Era, palette: Palette, gender:
   ])
   const spear = attachToBone(handRBone, spearGeo, woodMat, [0.02, 0.075, 0.025], [Math.PI * 0.82, 0, 0.06])
 
-  // Round/oval buckler shield strapped flush to the outer face (-X) of lowerarm_l with central boss
-  const shieldGeo = mergeSimple([
-    new THREE.CylinderGeometry(0.32, 0.32, 0.028, 18).rotateZ(Math.PI / 2),
+  // Shield strapped flush to the outer face (-X) of lowerarm_l with a central boss; bone +Y runs along the forearm,
+  // so oval shields stretch along Y (long axis vertical when the arm hangs).
+  //  - Hellenistic 150 BC: Attalid garrison thureophoroi carry the tall oval thureos (~1.1 x 0.6 m) with a spine rib.
+  //  - Roman AD 200: auxiliary road patrols / stationarii carry the flat oval auxiliary clipeus (~1.0 x 0.68 m).
+  //  - Byzantine AD 500: city guards keep the round skoutarion (~0.68 m).
+  const shieldShape = era === 'greek' ? { y: 1.72, z: 0.95, along: 0.02 } : era === 'roman' ? { y: 1.55, z: 1.06, along: 0.05 } : { y: 1, z: 1.06, along: 0.13 }
+  const shieldParts: THREE.BufferGeometry[] = [
+    new THREE.CylinderGeometry(0.32, 0.32, 0.028, era === 'byzantine' ? 18 : 22).rotateZ(Math.PI / 2).scale(1, shieldShape.y, shieldShape.z),
     new THREE.SphereGeometry(0.075, 10, 6, 0, Math.PI * 2, 0, Math.PI * 0.5).rotateZ(Math.PI / 2).translate(-0.015, 0, 0),
-  ])
-  const shield = attachToBone(lowerArmLBone, shieldGeo, trim, [-0.072, 0.13, 0.015], [0, 0.12, 0])
+  ]
+  if (era === 'greek') shieldParts.push(new THREE.BoxGeometry(0.03, 0.32 * shieldShape.y * 1.9, 0.045).translate(-0.02, 0, 0)) // thureos spina
+  const shieldGeo = mergeSimple(shieldParts)
+  const shield = attachToBone(lowerArmLBone, shieldGeo, trim, [-0.072, shieldShape.along, 0.015], [0, 0.12, 0])
 
   // Porter: crossed hemp rope harness + dorsal Phrygian amphora / woven pack basket
   const porterGeo = mergeSimple([
@@ -658,7 +692,9 @@ export function createRiggedCitizen(era: Era, palette: Palette, gender: Gender =
 export function instantiateCitizen(model: GLTF, motions: GLTF, era: Era, palette: Palette, genderHint?: Gender) {
   const gender: Gender = genderHint ?? (model.scene.name.toLowerCase().includes('f') ? 'f' : 'm')
   const root = new THREE.Group(), content = clone(model.scene)
-  root.add(content); content.updateMatrixWorld(true)
+  // Visual pivot between the physics root and the model: rolls tumble this group, never the root.
+  const tumble = new THREE.Group(); tumble.name = 'CitizenTumble'
+  root.add(tumble); tumble.add(content); content.updateMatrixWorld(true)
   const ownedMaterials = new Set<THREE.Material>(), skeletons = new Set<THREE.Skeleton>()
   let body: THREE.SkinnedMesh | null = null
   content.traverse(o => {
@@ -715,9 +751,50 @@ export function instantiateCitizen(model: GLTF, motions: GLTF, era: Era, palette
   })
   secondary.cloth.geometry.boundingSphere = fitSphere(secondary.cloth)
 
+  // Hip height (root space) for the roll pivot, and the right arm chain for the additive wave.
+  root.updateMatrixWorld(true)
+  const pelvisBone = content.getObjectByName('pelvis')
+  const hipY = pelvisBone ? root.worldToLocal(pelvisBone.getWorldPosition(new THREE.Vector3())).y : 0.95
+  const curlBones = ['spine_01', 'spine_02', 'spine_03', 'neck_01'].map(n => content.getObjectByName(n)).filter(Boolean) as THREE.Object3D[]
+  const tuckLegs = (['l', 'r'] as const).map(side => ({
+    thigh: content.getObjectByName(`thigh_${side}`), calf: content.getObjectByName(`calf_${side}`), foot: content.getObjectByName(`foot_${side}`),
+  }))
+  const arm = {
+    upper: content.getObjectByName('upperarm_r'), lower: content.getObjectByName('lowerarm_r'),
+    hand: content.getObjectByName('hand_r'), tip: content.getObjectByName('middle_01_r'),
+  }
+  // Which root-space side the right arm hangs on (-X for these packs).
+  const armSide = arm.upper ? Math.sign(root.worldToLocal(arm.upper.getWorldPosition(new THREE.Vector3())).x) || -1 : -1
+  let waveUntil = 0, waveWeight = 0, wavePhase = 0
+  const applyWave = (w: number) => {
+    if (!arm.upper || !arm.lower || !arm.hand) return
+    const ease = w * w * (3 - 2 * w)
+    tumble.updateWorldMatrix(true, true)
+    tumble.getWorldQuaternion(_waveRoot)
+    // upper arm raised up and out, forearm near vertical swinging side to side, hand following with a flick
+    const swing = Math.sin(wavePhase)
+    aimBoneToward(arm.upper, arm.lower, _waveDir.set(armSide * 0.62, 0.74, 0.22).normalize().applyQuaternion(_waveRoot), ease)
+    aimBoneToward(arm.lower, arm.hand, _waveDir.set(armSide * (0.12 + 0.34 * swing), 1, 0.18).normalize().applyQuaternion(_waveRoot), ease)
+    if (arm.tip) aimBoneToward(arm.hand, arm.tip, _waveDir.set(armSide * (0.18 + 0.5 * swing), 1, 0.12).normalize().applyQuaternion(_waveRoot), ease)
+  }
+  const setTumble = (progress: number) => {
+    if (progress < 0) {
+      if (tumble.position.lengthSq() > 0 || tumble.quaternion.w !== 1) { tumble.position.set(0, 0, 0); tumble.quaternion.identity() }
+      return
+    }
+    const p = Math.min(1, progress)
+    const s = p * p * p * (p * (p * 6 - 15) + 10)
+    _rollQ.setFromAxisAngle(_xAxis, s * Math.PI * 2) // +angle: head over the front (+Z)
+    _rollPivot.set(0, hipY, 0)
+    tumble.quaternion.copy(_rollQ)
+    // rotate about the hip pivot: p - R p, then sink mid-roll
+    tumble.position.copy(_rollPivot).sub(_rollTurned.copy(_rollPivot).applyQuaternion(_rollQ))
+    tumble.position.y -= ROLL_DROP * Math.sin(p * Math.PI)
+  }
+
   const mixer = new THREE.AnimationMixer(content)
   const actions = new Map(clips.map(c => [c.name, mixer.clipAction(c)]))
-  let current: THREE.AnimationAction | null = null, actionName = '', lastGrounded = true, wasGreeting = false, gestureUntil = 0, elapsed = 0, landingUntil = 0
+  let current: THREE.AnimationAction | null = null, actionName = '', lastGrounded = true, wasGreeting = false, wasTalking = false, gestureUntil = 0, elapsed = 0, landingUntil = 0
   /** Animation time owed by off-screen updates, applied in one mixer step when the rig is seen again. */
   let pendingMixerDt = 0
   const choose = (name: string, once = false) => {
@@ -785,15 +862,29 @@ export function instantiateCitizen(model: GLTF, motions: GLTF, era: Era, palette
       outfit.clothMat.color.copy(next.cloth)
       outfit.trimMat.color.copy(next.accent)
     },
-    reset() { secondary.reset(); mixer.stopAllAction(); current = null; actionName = ''; gestureUntil = landingUntil = 0; lastGrounded = true; wasGreeting = false; pendingMixerDt = 0; choose('Idle_Loop') },
+    reset() {
+      secondary.reset(); mixer.stopAllAction(); current = null; actionName = ''; gestureUntil = landingUntil = 0; lastGrounded = true
+      wasGreeting = wasTalking = false; pendingMixerDt = 0; waveUntil = 0; waveWeight = 0; setTumble(-1); choose('Idle_Loop')
+    },
+    /** Raise the right arm and wave for `seconds` (additive overlay on idle or a slow walk). */
+    wave(seconds: number) { waveUntil = Math.max(waveUntil, elapsed + Math.max(0, seconds)) },
+    /** current wave overlay weight 0..1 */
+    get waving() { return waveWeight },
     /** detail: 2 full (IK + cloth), 1 animation only with the skinned hem (distant), 0 off-screen (advances time only). */
     update(rawDt: number, motion: CitizenMotion, detail: CitizenDetail = CITIZEN_DETAIL.full) {
       const dt = Math.max(0, Math.min(rawDt, 0.05)); elapsed += dt
       secondary.restore()
-      if (motion.wave && !wasGreeting) gestureUntil = elapsed + 1.6
+      if (motion.wave && !wasGreeting) waveUntil = Math.max(waveUntil, elapsed + 1.6)
       wasGreeting = motion.wave
+      const talking = !!motion.talk
+      if (talking && !wasTalking) gestureUntil = elapsed + 1.6
+      wasTalking = talking
+      const rollP = motion.roll !== undefined && motion.roll >= 0 && motion.roll < 1 ? motion.roll : -1
       if (!lastGrounded && motion.grounded) landingUntil = elapsed + 0.18
-      if (!motion.grounded) {
+      if (rollP >= 0) {
+        // tucked limbs: Jump_Loop played fast while the visual root tumbles
+        choose('Jump_Loop'); current?.setEffectiveTimeScale(ROLL_CLIP_RATE)
+      } else if (!motion.grounded) {
         const next = lastGrounded || (actionName === 'Jump_Start' && (current?.time ?? 0) < 0.2) ? 'Jump_Start' : 'Jump_Loop'
         choose(next, next === 'Jump_Start')
       }
@@ -801,18 +892,42 @@ export function instantiateCitizen(model: GLTF, motions: GLTF, era: Era, palette
       else if (elapsed < gestureUntil && motion.speed < 0.3) choose('Idle_Talking_Loop')
       else choose(motion.speed < 0.15 ? 'Idle_Loop' : motion.speed < 3.5 ? 'Walk_Loop' : motion.speed < 6 ? 'Jog_Fwd_Loop' : 'Sprint_Loop')
       lastGrounded = motion.grounded
+      const waveTarget = rollP < 0 && motion.grounded && motion.speed < WAVE_MAX_SPEED && (motion.wave || elapsed < waveUntil) ? 1 : 0
+      waveWeight = THREE.MathUtils.clamp(waveWeight + Math.sign(waveTarget - waveWeight) * dt / WAVE_BLEND, 0, 1)
+      wavePhase += dt * 2 * Math.PI * 1.7
       const ageCadence = currentAge === 'child' ? 1.26 : currentAge === 'adolescent' ? 1.1 : currentAge === 'older' ? 0.9 : 1
       if (current && ['Walk_Loop', 'Jog_Fwd_Loop', 'Sprint_Loop'].includes(actionName)) {
-        current.setEffectiveTimeScale(THREE.MathUtils.clamp((motion.speed * ageCadence) / (actionName === 'Walk_Loop' ? 1.5 : actionName === 'Jog_Fwd_Loop' ? 4 : 7), 0.5, 1.85))
+        const rate = THREE.MathUtils.clamp((motion.speed * ageCadence) / (actionName === 'Walk_Loop' ? 1.5 : actionName === 'Jog_Fwd_Loop' ? 4 : 7), 0.5, 1.85)
+        current.setEffectiveTimeScale(rate)
+        // lock-step: every rig given the same clock lands on the same stride phase
+        if (motion.syncTime !== undefined && current.getEffectiveWeight() > 0.99) {
+          const d = current.getClip().duration
+          current.time = ((motion.syncTime * rate) % d + d) % d
+        }
       }
+      setTumble(rollP)
       if (detail === CITIZEN_DETAIL.offscreen) {
         // Keep the clock running cheaply so the pose does not freeze-pop when the rig re-enters the view.
         pendingMixerDt = Math.min(pendingMixerDt + dt, 30)
         return
       }
       mixer.update(dt + pendingMixerDt); pendingMixerDt = 0
+      if (rollP >= 0) {
+        // curl the spine into a ball, strongest mid-roll
+        const curl = ROLL_CURL * Math.sin(Math.min(1, rollP * 1.15) * Math.PI)
+        for (const b of curlBones) b.rotateX(curl)
+        // knees to the chest, heels to the seat
+        const tuck = Math.sin(Math.min(1, rollP * 1.15) * Math.PI)
+        tumble.updateWorldMatrix(true, true)
+        tumble.getWorldQuaternion(_waveRoot)
+        for (const leg of tuckLegs) if (leg.thigh && leg.calf && leg.foot) {
+          aimBoneToward(leg.thigh, leg.calf, _waveDir.set(0, 0.35, 1).normalize().applyQuaternion(_waveRoot), tuck * 0.9)
+          aimBoneToward(leg.calf, leg.foot, _waveDir.set(0, -1, -0.25).normalize().applyQuaternion(_waveRoot), tuck * 0.9)
+        }
+      } else if (waveWeight > 0) applyWave(waveWeight)
       secondary.setSimulated(detail === CITIZEN_DETAIL.full)
-      if (detail === CITIZEN_DETAIL.full) secondary.update(dt, motion)
+      // no foot IK while tumbling
+      if (detail === CITIZEN_DETAIL.full) secondary.update(dt, rollP >= 0 ? { ...motion, grounded: false } : motion)
     },
     get action() { return actionName },
     dispose() {

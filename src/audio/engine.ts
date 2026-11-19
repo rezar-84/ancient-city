@@ -20,7 +20,7 @@ let ctx: AudioContext | null = null
 let master: GainNode, reverb: ConvolverNode
 const bus = {} as Record<Layer, GainNode>
 const buffers = new Map<string, Promise<AudioBuffer | null>>()
-const playing = new Map<string, { src: AudioBufferSourceNode | null; gain: GainNode; level: number; lastOn: number; loading: boolean }>()
+const playing = new Map<string, { src: AudioBufferSourceNode | null; gain: GainNode; panner: StereoPannerNode; level: number; lastOn: number; loading: boolean }>()
 let ducked = false
 const DUCK: Record<Layer, number> = { music: 0.3, ambience: 0.3, places: 0.22, voices: 0.12, ui: 1 }
 
@@ -49,6 +49,41 @@ export function ensureAudio() {
   return ctx
 }
 
+// ---- background pause -----------------------------------------------------------------------
+// Mobile browsers keep Web Audio and <audio> elements running when the user switches apps or locks the
+// screen. While the page is hidden we suspend the graph and pause every media element, then resume
+// only what was actually playing.
+const mediaEls = new Set<HTMLMediaElement>()
+const resumeOnShow = new Set<HTMLMediaElement>()
+let hidden = false
+/** Register an <audio> element so it pauses with the page (removed automatically when it ends). */
+export function trackMediaElement(el: HTMLMediaElement) {
+  mediaEls.add(el)
+  el.addEventListener('ended', () => { if (!el.loop) mediaEls.delete(el) })
+  if (hidden) el.pause()
+}
+export function pageHidden() { return hidden }
+function setHidden(nowHidden: boolean) {
+  if (nowHidden === hidden) return
+  hidden = nowHidden
+  if (hidden) {
+    for (const el of mediaEls) if (!el.paused && !el.ended) { resumeOnShow.add(el); el.pause() }
+    try { if ('speechSynthesis' in window) window.speechSynthesis.pause() } catch { /* unsupported */ }
+    if (ctx && ctx.state === 'running') void ctx.suspend()
+  } else {
+    if (ctx && ctx.state !== 'closed') void ctx.resume()
+    for (const el of resumeOnShow) void el.play().catch(() => undefined)
+    resumeOnShow.clear()
+    try { if ('speechSynthesis' in window) window.speechSynthesis.resume() } catch { /* unsupported */ }
+  }
+}
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => setHidden(document.visibilityState === 'hidden'))
+  // iOS Safari can fire pagehide/pageshow (bfcache, home-screen apps) without a visibilitychange
+  window.addEventListener('pagehide', () => setHidden(true))
+  window.addEventListener('pageshow', () => setHidden(document.visibilityState === 'hidden'))
+}
+
 /** a node in the given layer (used by the HTMLAudio ambience) */
 export function layerInput(l: Layer) { return ctx ? bus[l] : null }
 
@@ -71,16 +106,24 @@ function load(url: string) {
 }
 
 // ---- place beds -----------------------------------------------------------------------------
+export interface BedOptions {
+  /** bus per bed id (default 'places'); fixed when the bed first starts */
+  layer?: Record<string, Layer>
+  /** stereo pan per bed id (-1..1), e.g. a marching patrol to one side */
+  pan?: Record<string, number>
+}
 /** Set target levels (0..1) for beds by id; beds not listed fade out and are released after a while. */
-export function setBedLevels(levels: Record<string, number>) {
+export function setBedLevels(levels: Record<string, number>, opts: BedOptions = {}) {
   if (!ctx || ctx.state !== 'running') return
   const now = ctx.currentTime
   for (const [id, lv] of Object.entries(levels)) {
     if (lv < 0.002) continue
     let p = playing.get(id)
     if (!p) {
-      const gain = ctx.createGain(); gain.gain.value = 0; gain.connect(bus.places)
-      p = { src: null, gain, level: 0, lastOn: now, loading: true }
+      const gain = ctx.createGain(); gain.gain.value = 0
+      const panner = ctx.createStereoPanner()
+      gain.connect(panner).connect(bus[opts.layer?.[id] ?? 'places'])
+      p = { src: null, gain, panner, level: 0, lastOn: now, loading: true }
       playing.set(id, p)
       const entry = p
       void load(`/audio/sfx/${id}.mp3`).then((buf) => {
@@ -96,14 +139,28 @@ export function setBedLevels(levels: Record<string, number>) {
   for (const [id, p] of playing) {
     const lv = levels[id] ?? 0
     if (Math.abs(lv - p.level) > 0.005) { p.gain.gain.setTargetAtTime(lv, now, 0.6); p.level = lv }
+    const pan = opts.pan?.[id]
+    if (pan !== undefined) p.panner.pan.setTargetAtTime(Math.max(-0.9, Math.min(0.9, pan)), now, 0.15)
     if (lv < 0.002 && now - p.lastOn > 6 && !p.loading) {
-      p.src?.stop(); p.src?.disconnect(); p.gain.disconnect(); playing.delete(id)
+      p.src?.stop(); p.src?.disconnect(); p.gain.disconnect(); p.panner.disconnect(); playing.delete(id)
     }
   }
 }
 
 // ---- music ----------------------------------------------------------------------------------
 let currentTrack: string | null = null
+const trackOk = new Map<string, boolean | null>()
+/** Whether /audio/music/<id>.mp3 exists: true/false once known, null while the one-time check runs.
+ *  (A missing file on the dev server answers with the SPA's HTML, so the content type is checked.) */
+export function musicAvailable(id: string): boolean | null {
+  const known = trackOk.get(id)
+  if (known !== undefined) return known
+  trackOk.set(id, null)
+  fetch(`/audio/music/${id}.mp3`, { method: 'HEAD' })
+    .then((r) => trackOk.set(id, r.ok && !(r.headers.get('content-type') ?? '').includes('text/html')))
+    .catch(() => trackOk.set(id, false))
+  return null
+}
 const tracks = new Map<string, { el: HTMLAudioElement; gain: GainNode }>()
 /** Crossfade to a score track (null = silence). Tracks stream from public/audio/music. */
 export function setMusic(id: string | null, fade = 3) {
@@ -122,12 +179,14 @@ export function setMusic(id: string | null, fade = 3) {
   let tr = tracks.get(id)
   if (!tr) {
     const el = new Audio(`/audio/music/${id}.mp3`); el.loop = true; el.preload = 'auto'; el.dataset.id = id
+    trackMediaElement(el)
     const src = ctx.createMediaElementSource(el)
     const gain = ctx.createGain(); gain.gain.value = 0
     src.connect(gain).connect(bus.music)
     tr = { el, gain }; tracks.set(id, tr)
   }
-  void tr.el.play().catch(() => undefined)
+  if (!hidden) void tr.el.play().catch(() => undefined)
+  else resumeOnShow.add(tr.el)
   tr.gain.gain.setTargetAtTime(1, t, fade / 3)
 }
 
@@ -186,7 +245,7 @@ export function playBark(url: string, pan: number, gain = 1) {
 }
 
 /** an occasional one-shot on the ambience layer (wind gust, distant birds) */
-export function playAmbientOneShot(id: 'gust' | 'birds', gain = 1) {
+export function playAmbientOneShot(id: 'gust' | 'birds' | 'rooster' | 'owl', gain = 1) {
   if (!ctx || ctx.state !== 'running' || settings.ambience <= 0) return
   void load(`/audio/sfx/${id}.mp3`).then((buf) => {
     if (!buf || !ctx) return

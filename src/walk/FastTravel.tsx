@@ -47,6 +47,7 @@ export function travelTo(id: string) {
     if (version !== travelVersion) return
     if (useApp.getState().mode !== 'walk') { if (fadeEl) fadeEl.style.opacity = '0'; return }
     teleport(p.x, p.z, p.yaw)
+    window.dispatchEvent(new Event('walk:arrive'))
     window.setTimeout(() => { if (fadeEl && version === travelVersion) fadeEl.style.opacity = '0' }, 180)
   }, 380)
 }

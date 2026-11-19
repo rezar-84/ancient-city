@@ -16,6 +16,7 @@ function setup() {
     if (id === '../store') return { useApp }
     if (id === '../content/characters') return { CHARACTERS: [character] }
     if (id === '../ui/ambient') return { startAmbient: () => {} }
+    if (id === '../ui/TopBar') return { LangSwitch: () => null }
     if (id === '../audio/characterVoice') return { playCharacterClip: () => false, speakCharacterLine: () => false, stopCharacterVoice: () => {}, voiceSupported: () => false }
     return require(id)
   })

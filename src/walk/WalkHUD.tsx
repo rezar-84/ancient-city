@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { useApp, walkInputBlocked } from '../store'
 import { CHARACTERS, ERA_LABEL } from '../content/characters'
 import { LANDMARKS } from '../content/landmarks'
@@ -10,9 +10,14 @@ import { walk } from './WalkControls'
 import { formatYear } from '../i18n'
 import { TimeOfDayPanel } from '../ui/TimeOfDay'
 import { playCharacterClip, stopCharacterVoice, voiceSupported } from '../audio/characterVoice'
+import { LangSwitch } from '../ui/TopBar'
 
 const tr = (lang: 'en' | 'tr', en: string, t: string) => (lang === 'en' ? en : t)
 const MAP_W = 170
+/** Top-right HUD buttons: a fixed 44px square on phones so the row has a stable width (3 × 44 + 2 × 8 = 148px). */
+const TOP_BTN = 'glass btn-ghost h-11 w-11 shrink-0 justify-center px-0 sm:w-auto sm:px-4'
+const ROUND_BTN = 'glass pointer-events-auto grid touch-none place-items-center rounded-full text-sm'
+const greet = () => window.dispatchEvent(new Event('walk:greet'))
 const { s, n, w, e } = PLAN_VIEW
 const kx = Math.cos(((s + n) / 2) * Math.PI / 180)
 const MAP_H = MAP_W * ((n - s) / ((e - w) * kx))
@@ -139,14 +144,14 @@ export function WalkHUD() {
       {/* below the waterline: turquoise travertine water */}
       <div ref={tint} aria-hidden="true" className="absolute inset-0 opacity-0 transition-opacity duration-200" style={{ background: 'radial-gradient(ellipse at 50% 30%, rgba(120,210,205,0.35), rgba(20,90,100,0.6))', backdropFilter: 'blur(2px)' }} />
       {/* character pill + backstory journal drawer (J) */}
-      <div data-walkui className="pointer-events-auto absolute left-2.5 top-[max(0.625rem,env(safe-area-inset-top))] sm:left-4 sm:top-4">
+      <div data-walkui className="pointer-events-auto absolute left-[max(0.625rem,env(safe-area-inset-left))] top-[max(0.625rem,env(safe-area-inset-top))] max-w-[calc(100vw-11rem)] sm:left-4 sm:top-4 sm:max-w-[calc(100vw-20rem)] md:max-w-[calc(50vw-9rem)]">
         <button type="button" onClick={() => { setStoryOpen((v) => !v); if (document.pointerLockElement) void document.exitPointerLock() }}
           aria-expanded={storyOpen} title={tr(lang, 'Character backstory & voice (J)', 'Karakter hikâyesi ve ses (J)')}
-          className="glass flex items-center gap-2.5 rounded-full py-1 pl-1 pr-4 text-left transition hover:ring-1 hover:ring-gold/60">
-          <img src={c.portrait} alt="" className="h-10 w-10 rounded-full object-cover object-top ring-2 ring-gold/70" />
-          <div className="leading-tight">
-            <p className="font-display text-sm">{c.name}</p>
-            <p className="text-[10px] text-travertine/65">{c.role[lang]} · {ERA_LABEL[c.era][lang]} · {formatYear(year, lang)}</p>
+          className="glass flex min-h-11 max-w-full items-center gap-2.5 rounded-full py-1 pl-1 pr-4 text-left transition hover:ring-1 hover:ring-gold/60">
+          <img src={c.portrait} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover object-top ring-2 ring-gold/70" />
+          <div className="min-w-0 leading-tight">
+            <p className="truncate font-display text-sm">{c.name}</p>
+            <p className="truncate text-[10px] text-travertine/65">{c.role[lang]} · {ERA_LABEL[c.era][lang]}<span className="hidden sm:inline"> · {formatYear(year, lang)}</span></p>
           </div>
         </button>
         {storyOpen && (
@@ -185,10 +190,10 @@ export function WalkHUD() {
       </div>
 
       {/* exit */}
-      <div data-walkui className="pointer-events-auto absolute right-2.5 top-[max(0.625rem,env(safe-area-inset-top))] flex items-center gap-2 sm:right-4 sm:top-4">
-        <button className="glass btn-ghost" onClick={() => window.dispatchEvent(new Event('walk:map'))} title="M">🗺 <span className="hidden sm:inline">{tr(lang, 'Map', 'Harita')}</span></button>
+      <div data-walkui className="pointer-events-auto absolute right-[max(0.625rem,env(safe-area-inset-right))] top-[max(0.625rem,env(safe-area-inset-top))] flex w-[9.25rem] shrink-0 items-center justify-end gap-2 sm:right-4 sm:top-4 sm:w-auto">
+        <button data-walkui className={TOP_BTN} aria-label={tr(lang, 'Map and travel', 'Harita ve yolculuk')} onClick={() => window.dispatchEvent(new Event('walk:map'))} title="M">🗺 <span className="hidden sm:inline">{tr(lang, 'Map', 'Harita')}</span></button>
         <SettingsButton lang={lang} />
-        <button className="glass btn-ghost" onClick={() => { useApp.getState().setWalkPaused(true); if (document.pointerLockElement) void document.exitPointerLock() }}>Ⅱ <span className="hidden sm:inline">{tr(lang, 'Pause', 'Duraklat')}</span></button>
+        <button data-walkui className={TOP_BTN} aria-label={tr(lang, 'Pause', 'Duraklat')} onClick={() => { useApp.getState().setWalkPaused(true); if (document.pointerLockElement) void document.exitPointerLock() }}>Ⅱ <span className="hidden sm:inline">{tr(lang, 'Pause', 'Duraklat')}</span></button>
       </div>
 
       <dialog ref={pauseDialog} data-walkui aria-labelledby="walk-pause-title"
@@ -207,7 +212,7 @@ export function WalkHUD() {
       {locked && <div className="absolute left-1/2 top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/80 shadow" />}
 
       {/* minimap */}
-      <div data-walkui onClick={() => window.dispatchEvent(new Event('walk:map'))} className={'glass pointer-events-auto absolute bottom-4 right-4 hidden cursor-pointer overflow-hidden rounded-2xl p-1 ' + (selected ? '' : 'sm:block')} title="M">
+      <div data-walkui onClick={() => window.dispatchEvent(new Event('walk:map'))} className={'glass pointer-events-auto absolute bottom-4 right-4 hidden cursor-pointer overflow-hidden rounded-2xl p-1 ' + (selected ? '' : 'sm:[@media(pointer:fine)]:block')} title="M">
         <div className="relative overflow-hidden rounded-xl" style={{ width: MAP_W, height: MAP_H }}>
           <PlanSVG lang={lang} width={MAP_W * 2} withLabels={false} grid />
           <div ref={dot} className="absolute h-0 w-0" style={{ borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderBottom: '14px solid #c9553a', filter: 'drop-shadow(0 0 2px #fff)' }} />
@@ -216,14 +221,14 @@ export function WalkHUD() {
 
       {/* interaction prompt */}
       {nearL && !selected && (
-        <div data-walkui className="pointer-events-auto absolute bottom-28 left-1/2 flex -translate-x-1/2 items-center gap-2 sm:bottom-24">
-          <button className="glass flex items-center gap-2 rounded-full px-4 py-2 text-sm" onClick={() => interact(nearL.id)}>
+        <div data-walkui className="pointer-events-none absolute inset-x-0 bottom-[calc(max(1.5rem,env(safe-area-inset-bottom))+9.5rem)] mx-auto flex w-fit max-w-[calc(100vw-2rem)] flex-wrap items-center justify-center gap-2 [@media(pointer:fine)]:bottom-24">
+          <button data-walkui className="glass pointer-events-auto flex min-h-11 max-w-full items-center gap-2 rounded-full px-4 py-2 text-left text-sm" onClick={() => interact(nearL.id)}>
             <kbd className="hidden rounded bg-travertine/90 px-1.5 font-sans text-xs text-ink sm:inline">E</kbd>
             <span className="sm:hidden">ⓘ</span>
             {tr(lang, 'About', 'Hakkında')} <b className="font-display">{lname(nearL, lang)}</b>
           </button>
           {hasReflection && (
-            <button className="glass flex items-center gap-1.5 rounded-full border border-gold/40 px-3.5 py-2 text-sm text-gold"
+            <button data-walkui className="glass pointer-events-auto flex min-h-11 items-center gap-1.5 rounded-full border border-gold/40 px-3.5 py-2 text-sm text-gold"
               onClick={() => window.dispatchEvent(new CustomEvent('walk:reflect', { detail: nearL.id }))}>
               <kbd className="hidden rounded bg-gold/90 px-1.5 font-sans text-xs text-ink sm:inline">F</kbd>
               🔊 {tr(lang, 'Reflect', 'Düşünce')}
@@ -240,21 +245,26 @@ export function WalkHUD() {
         </div>
       )}
 
-      {!paused && !selected && <button data-walkui className="glass btn-ghost pointer-events-auto absolute bottom-20 left-4 min-h-11" onClick={() => window.dispatchEvent(new Event('walk:greet'))}>
+      {/* desktop: greet button in the free bottom-left corner (joystick and touch cluster are touch-only) */}
+      {!paused && !selected && <button data-walkui className="glass btn-ghost pointer-events-auto absolute bottom-4 left-4 hidden min-h-11 [@media(pointer:fine)]:inline-flex" onClick={greet}>
         {tr(lang, 'Greet · G', 'Selam ver · G')}
       </button>}
-      {!paused && <Joystick />}
-      {/* phone: jump + view */}
-      <div data-walkui className="pointer-events-auto absolute bottom-[max(1.5rem,env(safe-area-inset-bottom))] right-5 flex flex-col items-center gap-3 [@media(pointer:fine)]:hidden">
-        <button className="glass grid h-11 w-11 place-items-center rounded-full text-sm" onClick={() => { walk.view = walk.view === 'first' ? 'third' : 'first' }} aria-label="view">👁</button>
-        <button className="glass grid h-16 w-16 place-items-center rounded-full font-display text-sm" onPointerDown={() => { walk.jumpPressed = true }} aria-label="jump">⤒</button>
-      </div>
+      {!paused && <Joystick lang={lang} />}
+      {/* touch: bottom-right action cluster, as tall as the joystick so the prompt clears both thumb zones */}
+      {!paused && (
+        <div data-walkui className="pointer-events-none absolute bottom-[max(1.5rem,env(safe-area-inset-bottom))] right-[max(1.25rem,env(safe-area-inset-right))] grid grid-cols-[3.5rem_4rem] items-end justify-items-center gap-2.5 [@media(pointer:fine)]:hidden">
+          <button data-walkui className={ROUND_BTN + ' h-11 w-11'} onClick={greet} aria-label={tr(lang, 'Wave', 'El salla')} title={tr(lang, 'Wave', 'El salla')}>👋</button>
+          <button data-walkui className={ROUND_BTN + ' h-11 w-11'} onClick={() => { walk.view = walk.view === 'first' ? 'third' : 'first' }} aria-label={tr(lang, 'Switch camera view', 'Kamera görünümünü değiştir')} title={tr(lang, 'View', 'Görünüm')}>👁</button>
+          <button data-walkui className={ROUND_BTN + ' h-14 w-14 text-lg'} onPointerDown={() => { walk.rollPressed = true }} aria-label={tr(lang, 'Roll', 'Yuvarlan')} title={tr(lang, 'Roll', 'Yuvarlan')}>⟳</button>
+          <button data-walkui className={ROUND_BTN + ' h-16 w-16 font-display text-xl'} onPointerDown={() => { walk.jumpPressed = true }} aria-label={tr(lang, 'Jump', 'Zıpla')} title={tr(lang, 'Jump', 'Zıpla')}>⤒</button>
+        </div>
+      )}
     </div>
   )
 }
 
 /** Touch joystick (phones/tablets) — direct DOM transform avoids React rerenders on pointermove. */
-function Joystick() {
+function Joystick({ lang }: { lang: 'en' | 'tr' }) {
   const base = useRef<HTMLDivElement>(null)
   const knobRef = useRef<HTMLDivElement>(null)
   const id = useRef<number | null>(null)
@@ -270,16 +280,28 @@ function Joystick() {
     setTransform(dx, dy)
     walk.joy.x = dx / R; walk.joy.y = dy / R
   }
-  const end = () => { id.current = null; setTransform(0, 0); walk.joy.x = walk.joy.y = 0 }
+  const end = (ev: ReactPointerEvent) => {
+    if (ev.pointerId !== id.current) return
+    id.current = null; setTransform(0, 0); walk.joy.x = walk.joy.y = 0
+  }
+  const start = (ev: ReactPointerEvent<HTMLDivElement>) => {
+    if (id.current !== null) return
+    // only grab the pointer when the touch lands inside the circle, not the square box's corners
+    const r = ev.currentTarget.getBoundingClientRect()
+    if (Math.hypot(ev.clientX - (r.left + r.width / 2), ev.clientY - (r.top + r.height / 2)) > r.width / 2) return
+    id.current = ev.pointerId
+    ev.currentTarget.setPointerCapture(ev.pointerId)
+    update(ev.clientX, ev.clientY)
+  }
   return (
     <div
-      ref={base} data-joystick
-      className="pointer-events-auto absolute bottom-[max(1.5rem,env(safe-area-inset-bottom))] left-6 h-32 w-32 touch-none rounded-full border border-white/25 bg-black/25 backdrop-blur-sm [@media(pointer:fine)]:hidden"
-      onPointerDown={(ev) => { id.current = ev.pointerId; (ev.target as HTMLElement).setPointerCapture(ev.pointerId); update(ev.clientX, ev.clientY) }}
+      ref={base} data-joystick role="application" aria-label={tr(lang, 'Movement joystick', 'Hareket joystick’i')}
+      className="pointer-events-auto absolute bottom-[max(1.5rem,env(safe-area-inset-bottom))] left-[max(1.5rem,env(safe-area-inset-left))] h-32 w-32 touch-none rounded-full border border-white/25 bg-black/25 backdrop-blur-sm [@media(pointer:fine)]:hidden"
+      onPointerDown={start}
       onPointerMove={(ev) => { if (ev.pointerId === id.current) update(ev.clientX, ev.clientY) }}
       onPointerUp={end} onPointerCancel={end}
     >
-      <div ref={knobRef} className="absolute left-1/2 top-1/2 h-14 w-14 -translate-x-1/2 -translate-y-1/2 rounded-full bg-travertine/80 shadow-lg" style={{ transform: 'translate(-50%, -50%)' }} />
+      <div ref={knobRef} className="pointer-events-none absolute left-1/2 top-1/2 h-14 w-14 -translate-x-1/2 -translate-y-1/2 rounded-full bg-travertine/80 shadow-lg" style={{ transform: 'translate(-50%, -50%)' }} />
     </div>
   )
 }
@@ -289,9 +311,13 @@ function SettingsButton({ lang }: { lang: 'en' | 'tr' }) {
   const [, force] = useState(0)
   return (
     <div className="relative">
-      <button className="glass btn-ghost" onClick={() => { useApp.getState().setWalkOverlay(open ? null : 'settings'); if (document.pointerLockElement) void document.exitPointerLock() }} aria-expanded={open} aria-label="settings">⚙</button>
+      <button data-walkui className={TOP_BTN} onClick={() => { useApp.getState().setWalkOverlay(open ? null : 'settings'); if (document.pointerLockElement) void document.exitPointerLock() }} aria-expanded={open} aria-label={tr(lang, 'Settings', 'Ayarlar')}>⚙</button>
       {open && (
-        <div className="glass absolute right-0 top-12 w-72 max-h-[75vh] overflow-y-auto rounded-2xl p-4 text-sm">
+        <div className="glass absolute right-0 top-12 w-[min(18rem,calc(100vw-5.5rem))] max-h-[75vh] overflow-y-auto rounded-2xl p-4 text-sm">
+          <div className="mb-3 flex items-center justify-between text-xs">
+            <span className="text-travertine/75">{tr(lang, 'Language', 'Dil')}</span>
+            <LangSwitch touch />
+          </div>
           <label className="block">
             <span className="mb-1 flex justify-between text-xs text-travertine/75"><span>{tr(lang, 'Walking speed', 'Yürüme hızı')}</span><span className="tabular-nums">{walk.speedMul.toFixed(2)}×</span></span>
             <input type="range" min={0.75} max={1.75} step={0.05} value={walk.speedMul} className="w-full accent-amber-500"

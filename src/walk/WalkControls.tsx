@@ -12,10 +12,13 @@ import { NPC_STATE } from './Crowd'
 import { sceneUniforms } from '../scene/Terrain'
 import { waterHere } from '../scene/Water'
 import { addRipple } from '../scene/water'
+import { jumpLaunch, longJumpSteer, ROLL, ROLL_MS, rollCurve, rollSpeed, slideMove } from './moves'
 
 const EYE = 1.62, RADIUS = 0.35, STEP = 0.45
+/** wall-probe heights above the feet: standing (knee, chest) vs tucked roll (shin, belly) */
+const STAND_RAYS = [0.55, 1.35], ROLL_RAYS = [0.35, 0.8]
 const SPEED = { walk: 2.0, run: 4.6, sprint: 7.5 }
-const GRAVITY = 18, JUMP_V = 5.4, COYOTE = 0.12, BUFFER = 0.15
+const GRAVITY = 18, COYOTE = 0.12, BUFFER = 0.15
 /** water: wade above 0.3 m (slower), swim once the floor is deeper than 1.1 m; swimmers float chest-deep */
 const WADE = 0.3, SWIM = 1.1, FLOAT = 1.25, SWIM_SPEED = { walk: 1.3, run: 1.8, sprint: 2.2 }
 
@@ -31,6 +34,10 @@ export const walk = {
   view: 'first' as 'first' | 'third',
   /** virtual joystick (mobile), -1..1, and on-screen jump button */
   joy: { x: 0, y: 0 }, jumpPressed: false,
+  /** on-screen Roll button (consumed like jumpPressed) */
+  rollPressed: false,
+  /** performance.now() ms when the current roll ends, 0 if none */
+  rollUntil: 0,
   locked: false,
   waveUntil: 0,
   surface: 'stone' as Surface,
@@ -44,6 +51,10 @@ export const walk = {
   /** listeners: footstep (surface, intensity) and landing (fall speed) */
   onStep: new Set<(s: Surface, k: number) => void>(),
   onJump: new Set<() => void>(),
+  /** fired at take-off of a long jump (in addition to onJump) */
+  onLongJump: new Set<() => void>(),
+  /** fired when a roll starts */
+  onRoll: new Set<() => void>(),
   onLand: new Set<(v: number) => void>(),
 }
 
@@ -96,7 +107,13 @@ export function WalkControls() {
   const { camera, gl, scene } = useThree()
   const probe = sharedWorldProbe
   const houses = useRef<(x: number, z: number) => boolean>(() => false)
-  const st = useRef({ bob: 0, coyote: 0, buffer: 0, dip: 0, lastTapW: 0, sprintLatch: false, stepPhase: 0, camDist: 0, smoothFeet: Number.NaN })
+  const st = useRef({
+    bob: 0, coyote: 0, buffer: 0, dip: 0, lastTapW: 0, sprintLatch: false, stepPhase: 0, camDist: 0, smoothFeet: Number.NaN,
+    /** long jump: velocity locked at take-off until landing */
+    longJump: false, lockX: 0, lockZ: 0,
+    /** roll: request buffer, elapsed time (-1 idle), entry speed, direction, time since the last roll start */
+    rollBuffer: 0, rollT: -1, rollV0: 0, rollDX: 0, rollDZ: 0, sinceRoll: 99,
+  })
   const active = mode === 'walk'
   const probeReady = useRef(false)
   const [terrainReady, setTerrainReady] = useState(() => !!getTerrain())
@@ -143,6 +160,7 @@ export function WalkControls() {
     const cam = camera as THREE.PerspectiveCamera
     const t = getTerrain(), c = CHARACTERS.find((x) => x.id === character) ?? CHARACTERS[2]
     if (!t) return
+    const S = st.current
     killFlight()
     const resume = useApp.getState().walkSession
     const [x, z] = resume ? [walk.x, walk.z] : t.toLocal(c.spawn.lat, c.spawn.lon)
@@ -161,6 +179,7 @@ export function WalkControls() {
       if (rig.controls) rig.controls.enabled = true
       if (document.pointerLockElement) void document.exitPointerLock()
       pendingTeleport = null; keys.clear(); walk.joy.x = walk.joy.y = 0; walk.moving = false; walk.speed = 0; walk.jumpPressed = false
+      walk.rollPressed = false; walk.rollUntil = 0; S.rollT = -1; S.longJump = false
     }
   }, [active, character, camera, terrainReady])
 
@@ -180,6 +199,9 @@ export function WalkControls() {
         st.current.lastTapW = now
       }
       if (k === ' ' && !e.repeat) st.current.buffer = BUFFER
+      // Roll: plain C, or the Control key pressed on its own (never preventDefault, so Ctrl shortcuts still work)
+      const plain = !e.ctrlKey && !e.metaKey && !e.altKey
+      if (!e.repeat && ((k === 'c' && plain) || (e.key === 'Control' && !e.metaKey && !e.altKey && !e.shiftKey))) st.current.rollBuffer = BUFFER
       if (k === 'v' && !e.repeat) walk.view = walk.view === 'first' ? 'third' : 'first'
       keys.add(k)
       if (e.key.startsWith('Arrow') || e.key === ' ') e.preventDefault()
@@ -235,9 +257,10 @@ export function WalkControls() {
     const t = getTerrain()
     if (!t) return
     if (walkInputBlocked(useApp.getState())) {
-      keys.clear(); walk.joy.x = walk.joy.y = 0; walk.jumpPressed = false
+      keys.clear(); walk.joy.x = walk.joy.y = 0; walk.jumpPressed = false; walk.rollPressed = false
       walk.vx = walk.vz = walk.speed = 0; walk.moving = false
-      st.current.buffer = 0; st.current.sprintLatch = false
+      st.current.buffer = 0; st.current.sprintLatch = false; st.current.rollBuffer = 0
+      if (st.current.rollT >= 0) { st.current.rollT = -1; walk.rollUntil = 0 }
       return
     }
     const dt = Math.min(rawDt, 0.05)
@@ -286,16 +309,48 @@ export function WalkControls() {
       wx = dirX * target * slopeMul
       wz = dirZ * target * slopeMul
     }
+    // long jump: the take-off velocity stays locked, the stick only steers 25% of it until landing
+    if (S.longJump && !walk.grounded && !swimming) [wx, wz] = longJumpSteer(S.lockX, S.lockZ, wx, wz)
+    else S.longJump = false
     const accel = swimming ? 3.2 : walk.grounded ? (target > 0.05 ? 10.5 : 14.5) : 2.6
     walk.vx += (wx - walk.vx) * Math.min(1, accel * dt)
     walk.vz += (wz - walk.vz) * Math.min(1, accel * dt)
 
-    // ---- jump (buffer + coyote time)
+    // ---- roll (C / Control / touch button): grounded dash along the move or facing direction
+    if (walk.rollPressed) { S.rollBuffer = BUFFER; walk.rollPressed = false }
+    S.rollBuffer = Math.max(0, S.rollBuffer - dt)
+    S.sinceRoll += dt
+    if (S.rollBuffer > 0 && S.rollT < 0 && walk.grounded && walk.water !== 'swim' && S.sinceRoll >= ROLL.cooldown) {
+      const ml = Math.hypot(wx, wz)
+      if (ml > 0.05) { S.rollDX = wx / ml; S.rollDZ = wz / ml } else { S.rollDX = -sx; S.rollDZ = -cz }
+      S.rollV0 = walk.speed; S.rollT = 0; S.sinceRoll = 0; S.rollBuffer = 0; S.buffer = 0
+      walk.rollUntil = performance.now() + ROLL_MS
+      walk.onRoll.forEach((cb) => cb())
+    }
+    const rolling = S.rollT >= 0
+    if (rolling) {
+      S.rollT += dt
+      if (S.rollT >= ROLL.duration || swimming) { S.rollT = -1; walk.rollUntil = 0 }
+      else {
+        const v = rollSpeed(S.rollT / ROLL.duration, S.rollV0)
+        walk.vx = S.rollDX * v; walk.vz = S.rollDZ * v
+      }
+    }
+
+    // ---- jump (buffer + coyote time); a run-up faster than 4 m/s turns it into a long jump
     if (walk.jumpPressed) { S.buffer = BUFFER; walk.jumpPressed = false }
     S.buffer = Math.max(0, S.buffer - dt)
     S.coyote = walk.grounded ? COYOTE : Math.max(0, S.coyote - dt)
     if (swimming && S.buffer > 0) { walk.vy = 3.2; S.buffer = 0 } // kick up: climb out over the edge
-    else if (S.buffer > 0 && S.coyote > 0) { walk.vy = JUMP_V; walk.grounded = false; S.buffer = 0; S.coyote = 0; walk.onJump.forEach(cb => cb()) }
+    else if (S.buffer > 0 && S.coyote > 0 && !rolling) {
+      const launch = jumpLaunch(walk.gait, walk.vx, walk.vz, walk.speed)
+      walk.vy = launch.vy; walk.grounded = false; S.buffer = 0; S.coyote = 0
+      if (launch.long) {
+        walk.vx = launch.vx; walk.vz = launch.vz; S.lockX = launch.vx; S.lockZ = launch.vz; S.longJump = true
+      }
+      walk.onJump.forEach(cb => cb())
+      if (launch.long) walk.onLongJump.forEach(cb => cb())
+    }
 
     // ---- horizontal move with multi-ray shoulder capsule sweep, 2-pass wall sliding, and soft NPC separation
     const beforeX = walk.x, beforeZ = walk.z
@@ -318,7 +373,7 @@ export function WalkControls() {
       const perpX = -mz / md, perpZ = mx / md
       const shoulder = RADIUS * 0.58
       let hitAny = false
-      for (const hy of [0.55, 1.35]) {
+      for (const hy of S.rollT >= 0 ? ROLL_RAYS : STAND_RAYS) {
         for (const side of [0, -shoulder, shoulder]) {
           const nn = probe.wall(walk.x + perpX * side, walk.feet + hy, walk.z + perpZ * side, mx, mz, RADIUS + md, n)
           if (nn) {
@@ -342,10 +397,9 @@ export function WalkControls() {
         const top = probe.ground(x, z, walk.feet + 2.4)
         return top <= walk.feet + (walk.grounded ? STEP : Math.max(STEP, walk.vy > 0 ? 0.9 : 0.25))
       }
-      if (tryMove(walk.x + mx, walk.z + mz)) { walk.x += mx; walk.z += mz }
-      else if (tryMove(walk.x + mx, walk.z)) walk.x += mx
-      else if (tryMove(walk.x, walk.z + mz)) walk.z += mz
-      else { walk.vx *= 0.2; walk.vz *= 0.2 }
+      const moved = slideMove(walk.x, walk.z, mx, mz, tryMove)
+      walk.x = moved.x; walk.z = moved.z
+      if (moved.blocked) { walk.vx *= 0.2; walk.vz *= 0.2 }
     }
 
     // ---- vertical: support = terrain or a monument surface within step reach
@@ -354,7 +408,8 @@ export function WalkControls() {
     const solidY = probe.ground(walk.x, walk.z, walk.feet + STEP + 0.05)
     let support = Math.max(terrainY, solidY)
     if (walk.vy > 0) {
-      const ceiling = probe.ceiling(walk.x, walk.z, walk.feet + 1.68, walk.vy * dt + 0.05)
+      // head clearance: a tucked roll only needs ~1 m
+      const ceiling = probe.ceiling(walk.x, walk.z, walk.feet + (S.rollT >= 0 ? 1.0 : 1.68), walk.vy * dt + 0.05)
       if (ceiling < Infinity) walk.vy = 0
     }
     // ---- water: swimmers float chest-deep (spring towards the float line); deep water lets you swim
@@ -416,10 +471,14 @@ export function WalkControls() {
     if (!Number.isFinite(S.smoothFeet) || Math.abs(walk.feet - S.smoothFeet) > 1.5) S.smoothFeet = walk.feet
     else S.smoothFeet += (walk.feet - S.smoothFeet) * (1 - Math.exp(-dt * 18))
     S.dip *= Math.exp(-dt * 7)
-    const bobAmp = walk.water === 'swim' ? 0.035 : walk.grounded && walk.moving ? Math.min(0.055, 0.016 + hs * 0.0055) : 0
-    const eyeY = S.smoothFeet + EYE - S.dip + Math.sin(S.bob * 2) * bobAmp
+    // roll: first person dips ~0.75 m and pitches down briefly; third person only sags slightly
+    const rollP = S.rollT >= 0 ? S.rollT / ROLL.duration : -1
+    const rollDip = rollP >= 0 ? rollCurve(rollP).drop * (walk.view === 'first' ? 0.75 : 0.2) : 0
+    const rollPitch = rollP >= 0 && walk.view === 'first' ? -Math.sin(rollP * Math.PI) * 0.38 : 0
+    const bobAmp = walk.water === 'swim' ? 0.035 : walk.grounded && walk.moving && rollP < 0 ? Math.min(0.055, 0.016 + hs * 0.0055) : 0
+    const eyeY = S.smoothFeet + EYE - S.dip - rollDip + Math.sin(S.bob * 2) * bobAmp
     const strideRoll = walk.view === 'first' && walk.grounded && walk.moving ? Math.sin(S.bob) * Math.min(0.009, hs * 0.0018) : 0
-    euler.set(walk.pitch, walk.yaw, strideRoll)
+    euler.set(walk.pitch + rollPitch, walk.yaw, strideRoll)
     camera.quaternion.setFromEuler(euler)
     S.camDist += ((walk.view === 'third' ? 3.4 : 0) - S.camDist) * Math.min(1, dt * 6)
     back.set(0, 0, 1).applyQuaternion(camera.quaternion).multiplyScalar(S.camDist)

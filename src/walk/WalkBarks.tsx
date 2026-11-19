@@ -95,7 +95,7 @@ export function WalkBarks() {
 
   if (mode !== 'walk' || !line) return null
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-40 z-20 flex justify-center px-4 sm:bottom-36">
+    <div className="pointer-events-none absolute inset-x-0 bottom-[calc(max(1.5rem,env(safe-area-inset-bottom))+16rem)] z-20 flex justify-center px-4 [@media(pointer:fine)]:bottom-40">
       <p className={'max-w-xl rounded-xl px-4 py-2.5 text-center text-sm text-white backdrop-blur-sm ' + (line.accent ? 'border border-gold/40 bg-ink/80' : 'bg-black/55')}>
         {line.speaker && <span className="mr-2 font-display text-xs uppercase tracking-wider text-gold">{line.speaker}:</span>}
         <span className={line.gloss ? 'italic text-travertine/85' : 'text-travertine'}>{line.text}</span>

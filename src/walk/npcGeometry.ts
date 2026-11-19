@@ -53,7 +53,9 @@ class Figure {
 }
 
 /** Stable legacy values: walk=0 (also rests at speed zero), talk=1, pray=2. */
-export const POSE = { walk: 0, talk: 1, pray: 2, run: 3, idle: 4, wave: 5, sit: 6, carry: 7, swim: 8, tread: 9, drink: 10 } as const;
+export const POSE = { walk: 0, talk: 1, pray: 2, run: 3, idle: 4, wave: 5, sit: 6, carry: 7, swim: 8, tread: 9, drink: 10, roll: 11 } as const;
+/** Highest pose id (PoseBlender bounds). roll reads its progress 0..1 from iAnim.w instead of the head look. */
+export const MAX_POSE = 11;
 export const HAIR = { short: 0, curly: 1, bun: 2, veiled: 3, bald: 4 } as const;
 export type PersonLOD = 'near' | 'far';
 
@@ -395,7 +397,17 @@ void npcPose(float pose, out vec3 angles, out float joint, out vec3 root, out fl
     if (leg) { angles.x = side*sin(phase)*0.25; joint = -0.35; }
   }
   if (pose == POSE_drink) { lean = 0.75; if (arm) { angles.x = -0.9; joint = 0.9; } }
-  if (aLimb == 5.) angles.y = clamp(iAnim.w, -1.2, 1.2);
+  if (pose == POSE_roll) {
+    // forward roll: full 360° tumble about the hips (0.86 m), sinking 0.45 m mid-roll, limbs tucked
+    float p = clamp(iAnim.w, 0., 1.);
+    float s = p*p*p*(p*(p*6.-15.)+10.);
+    lean = s * 6.2831853;
+    // npcBody pivots at 1.20 m; shift so the turn is about the hip instead
+    root = npcX(lean) * vec3(0., 0.34, 0.) - vec3(0., 0.34, 0.) - vec3(0., 0.45 * sin(p * 3.1415926), 0.);
+    if (leg) { angles.x = -1.35; joint = 1.7; }
+    if (arm) { angles.x = -1.1; angles.z = side * 0.2; joint = 1.3; }
+  }
+  if (aLimb == 5. && pose != POSE_roll) angles.y = clamp(iAnim.w, -1.2, 1.2);
 }
 `).replace('#include <beginnormal_vertex>', `#include <beginnormal_vertex>
 vec3 npcAngles = vec3(0.), npcRoot = vec3(0.);

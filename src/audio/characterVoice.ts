@@ -1,4 +1,5 @@
 import { getVolume } from '../ui/ambient'
+import { trackMediaElement } from './engine'
 
 export interface VoiceProfile {
   gender: 'f' | 'm'
@@ -85,6 +86,7 @@ export function playCharacterClip(
     const url = `/audio/characters/${characterId}-${clipKey}-${lang}.mp3`
     const el = new Audio(url)
     el.volume = vol
+    trackMediaElement(el)
     activeAudio = el
     el.onended = () => { if (activeAudio === el) activeAudio = null; onEnd?.() }
     el.onerror = () => {

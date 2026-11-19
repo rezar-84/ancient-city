@@ -56,7 +56,7 @@ test('near/far budgets, smooth normals and common rig layout', async () => {
 
 test('all poses emitted in both shaders, optional defaults and attribute budget', async () => {
   const { POSE, patchCrowdMaterial, createCrowdAttributes } = await api
-  assert.equal(new Set(Object.values(POSE)).size, 11)
+  assert.equal(new Set(Object.values(POSE)).size, 12)
   const attrs = createCrowdAttributes(2)
   assert.equal(attrs.pose.getY(0), 1)
   assert.equal(attrs.style.itemSize, 4)

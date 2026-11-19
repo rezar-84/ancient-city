@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useApp } from '../store'
 import { CHARACTERS, ERA_LABEL, type Character } from '../content/characters'
 import { startAmbient } from '../ui/ambient'
+import { LangSwitch } from '../ui/TopBar'
 import { playCharacterClip, stopCharacterVoice, voiceSupported } from '../audio/characterVoice'
 
 const ERA_ART: Record<Character['era'], string> = {
@@ -60,9 +61,13 @@ export function CharacterSelect() {
       <div className="pointer-events-none fixed inset-0 bg-gradient-to-b from-ink/60 via-ink/70 to-ink" />
       <div className="relative mx-auto max-w-6xl px-4 pb-28 pt-[max(1rem,env(safe-area-inset-top))] sm:px-8 sm:pt-8">
         <div className="flex items-center justify-between gap-3">
-          <button className="glass btn-ghost" onClick={() => useApp.getState().setMode('explore')}>← {tr(lang, 'Back', 'Geri')}</button>
-          <p className="text-[10px] uppercase tracking-[0.3em] text-travertine/50">{tr(lang, 'AI-generated illustrations', 'Yapay zekâ ile üretilmiş resimler')}</p>
+          <button className="glass btn-ghost min-h-11 shrink-0" onClick={() => useApp.getState().setMode('explore')}>← {tr(lang, 'Back', 'Geri')}</button>
+          <div className="flex min-w-0 items-center gap-3">
+            <p className="hidden min-w-0 truncate text-[10px] uppercase tracking-[0.3em] text-travertine/50 sm:block">{tr(lang, 'AI-generated illustrations', 'Yapay zekâ ile üretilmiş resimler')}</p>
+            <div className="shrink-0"><LangSwitch touch /></div>
+          </div>
         </div>
+        <p className="mt-2 text-right text-[10px] uppercase tracking-[0.3em] text-travertine/50 sm:hidden">{tr(lang, 'AI-generated illustrations', 'Yapay zekâ ile üretilmiş resimler')}</p>
         <h1 className="mt-5 font-display text-3xl tracking-[0.08em] text-gold sm:text-5xl">{tr(lang, 'Walk the city', 'Kentte yürü')}</h1>
         <p className="mt-2 max-w-2xl font-serif text-lg italic text-travertine/85">{tr(lang,
           'Choose who you are. Your period decides which buildings stand, which language you hear, and which music plays.',

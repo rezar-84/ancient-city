@@ -41,6 +41,16 @@ test('invalid configuration and inputs are rejected', () => {
   assert.throws(() => new PoseBlender(1, 0, 0), /Invalid/)
   const b = new PoseBlender(1)
   assert.throws(() => b.set(1, 0, 0), /Invalid/)
-  assert.throws(() => b.set(0, 11, 0), /Invalid/)
+  assert.throws(() => b.set(0, 12, 0), /Invalid/)
+  b.set(0, 11, 0) // POSE.roll
   assert.throws(() => b.set(0, 1, NaN), /Invalid/)
+})
+
+test('POSE.roll exists as pose 11 with a shader branch shared by the depth pass', () => {
+  const src = fs.readFileSync('src/walk/npcGeometry.ts', 'utf8')
+  assert.match(src, /roll: 11 \}/)
+  assert.match(src, /pose == POSE_roll/)
+  // one patch function builds both the visible and the depth materials
+  assert.match(fs.readFileSync('src/walk/Crowd.tsx', 'utf8'), /patchCrowdMaterial\(depth, kind\)/)
+  assert.doesNotThrow(() => new PoseBlender(1, 11))
 })

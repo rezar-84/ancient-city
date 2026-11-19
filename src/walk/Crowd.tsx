@@ -20,7 +20,8 @@ import {
 } from './riggedCitizen'
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js'
-import { cartPose, type CartPose } from './cartRoute'
+import { advancePatrol, cartLoopLength, cartPose, PATROL, patrolPose, type CartPose, type PatrolState } from './cartRoute'
+import { ROLL_MS } from './moves'
 import { MarketSheep } from './MarketSheep'
 
 type Variant = 'greek' | 'roman' | 'byzantine'
@@ -62,7 +63,7 @@ function rng(seed: number) {
 
 /** NPC kinds & historical roles across Hellenistic 150 BC, Roman AD 200, and Byzantine AD 500. */
 interface Npc {
-  kind: 'walker' | 'cross' | 'idle' | 'merchant' | 'priest' | 'pilgrim' | 'guard'
+  kind: 'walker' | 'cross' | 'idle' | 'merchant' | 'priest' | 'pilgrim' | 'guard' | 'patrol'
   role: CitizenRole
   age: AgeGroup
   cut: GarmentCut
@@ -81,6 +82,9 @@ interface Npc {
 export const NPC_STATE: { x: Float32Array; z: Float32Array; count: number; female: Uint8Array; guard: Uint8Array } = {
   x: new Float32Array(0), z: new Float32Array(0), count: 0, female: new Uint8Array(0), guard: new Uint8Array(0),
 }
+
+/** Centre of the nearest marching squad in local metres (active = false when no squad exists). Updated each frame. */
+export const PATROL_STATE: { x: number; z: number; active: boolean } = { x: 0, z: 0, active: false }
 
 function roleBodyMetrics(role: CitizenRole, age: AgeGroup, female: boolean, rand: () => number) {
   if (age === 'child') {
@@ -349,6 +353,16 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
       }
     }
 
+    // Marching patrol on Frontinus Street (the plateia), one squad of 2 files x 2 ranks per era:
+    //  - Hellenistic 150 BC: Attalid garrison thureophoroi (oval thureos shield) walking the city's main street.
+    //  - Roman AD 200: an auxiliary road patrol of stationarii keeping the via and gate traffic in order (oval auxiliary shield).
+    //  - Byzantine AD 500: the city guard on its round (round shield).
+    // They follow the cart loop at a phase picked as far from every cart as possible; u = rank, v = file.
+    const patrolPhase = rand() * 6.28
+    for (let rank = 0; rank < PATROL.ranks; rank++) for (const file of [-1, 1]) {
+      pushNpc({ kind: 'patrol', role: 'soldier', prop: 'staff', u: rank, v: file, dir: 1, speed: PATROL.speed, min: 0, max: 0, x: originX, z: originZ, face: F.yawU, side: 0, phase: patrolPhase, pose: POSE.walk, look: 0 }, 0)
+    }
+
     // Chatting resident & merchant groups: agora edge, nymphaeum, theatre approach
     const groupAt = (cx: number, cz: number, n: number, merchantBias = 0.25) => {
       for (let g = 0; g < n; g++) {
@@ -526,7 +540,7 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
       const gender = slotIndex % 2 ? 'f' as const : 'm' as const
       const citizen = createRiggedCitizen(variant, { cloth: new THREE.Color(pal.cloth[0]), skin: new THREE.Color(SKIN_TONES[2]), accent: new THREE.Color(pal.accent[0]) }, gender)
       citizen.root.visible = false
-      return { citizen, id: -1, gender }
+      return { citizen, id: -1, gender, replied: false }
     })
 
     // Shared instanced held props (dynamically compacted to nearby carriers each frame)
@@ -560,6 +574,18 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
 
     const nCarts = variant === 'roman' ? 16 : 9
     const carts = Array.from({ length: nCarts }, (_, i) => ({ distance: 10 + rand() * (F.L - 80) + (i % 2 ? 0 : F.L - 60 + Math.PI * 2.4), speed: 1.2 + rand() * 0.3, phase: rand() * 6.28 }))
+    // Patrol phase: the loop position with the widest gap to every cart (squad spans one rank gap behind its lead).
+    const loop = cartLoopLength(F.L)
+    const gapOnLoop = (a: number, b: number) => { const d = (((a - b) % loop) + loop) % loop; return Math.min(d, loop - d) }
+    let patrolLead = 0, bestGap = -1
+    for (let k = 0; k < 96; k++) {
+      const lead = (k / 96) * loop
+      let g = Infinity
+      for (const cr of carts) g = Math.min(g, gapOnLoop(cr.distance, lead), gapOnLoop(cr.distance, lead - PATROL.rankGap))
+      if (g > bestGap) { bestGap = g; patrolLead = lead }
+    }
+    const patrol: PatrolState & { moving: boolean; members: number[] } = { lead: patrolLead, halt: 0, moving: true, members: [] }
+    npcs.forEach((n, i) => { if (n.kind === 'patrol') patrol.members.push(i) })
     const hGeo = createHorseGeometry(), hAttr = createCrowdAttributes(nCarts)
     hGeo.setAttribute('iAnim', hAttr.anim); hGeo.setAttribute('iTint0', hAttr.tint0); hGeo.setAttribute('iTint1', hAttr.tint1); hGeo.setAttribute('iTint2', hAttr.tint2)
     const cGeo = createCartGeometry(), cAttr = createCrowdAttributes(nCarts)
@@ -591,11 +617,11 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
     const cacheEntities = npcs.length + 1 + nCarts * 2
     groundCache.current = new Float64Array(cacheEntities * 3).fill(NaN)
     NPC_STATE.x = new Float32Array(npcs.length); NPC_STATE.z = new Float32Array(npcs.length); NPC_STATE.count = npcs.length; NPC_STATE.female = female
-    NPC_STATE.guard = Uint8Array.from(npcs, (n) => (n.kind === 'guard' ? 1 : 0))
+    NPC_STATE.guard = Uint8Array.from(npcs, (n) => (n.kind === 'guard' || n.kind === 'patrol' ? 1 : 0))
 
     return {
       F, originX, originZ, ux, uz, vx, vz,
-      npcs, carts, nearPeople, farPeople, horses, cartMesh, propMeshes,
+      npcs, carts, patrol, loop, nearPeople, farPeople, horses, cartMesh, propMeshes,
       nearAttr, farAttr, hAttr, cAttr,
       npcTint0, npcTint1, npcTint2, npcStyle, horseTints,
       avatar, closePeople, mats: [pMat, hMat, cMat, ...depthMats],
@@ -608,6 +634,7 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
   }, [terrain, variant, character, citizenAssets, crowdEpoch])
 
   useEffect(() => () => {
+    PATROL_STATE.active = false
     sim.nearPeople.geometry.dispose(); sim.nearPeople.dispose()
     sim.farPeople.geometry.dispose(); sim.farPeople.dispose()
     sim.horses.geometry.dispose(); sim.horses.dispose()
@@ -641,6 +668,7 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
   const rigSphere = useMemo(() => new THREE.Sphere(), [])
   const leadPose = useMemo<CartPose>(() => ({ u: 0, v: 0, heading: 0 }), [])
   const axlePose = useMemo<CartPose>(() => ({ u: 0, v: 0, heading: 0 }), [])
+  const patrolPoseOut = useMemo<CartPose>(() => ({ u: 0, v: 0, heading: 0 }), [])
   const clock = useRef(0)
   const dirty = useRef({ near: false, far: false })
 
@@ -669,14 +697,14 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
   }, [sim, m4])
 
   useFrame(({ camera }, rawDt) => {
-    if (!visible) return
+    if (!visible) { PATROL_STATE.active = false; return }
     if (mode === 'walk' && walkInputBlocked(useApp.getState())) return
     const dt = Math.min(rawDt, 0.1); clock.current += dt
     probeBudget.current = 64
     const simYear = mode === 'walk' ? year : null
     const {
       F, originX, originZ, ux, uz, vx, vz,
-      npcs, carts, nearPeople, farPeople, horses, cartMesh, propMeshes,
+      npcs, carts, patrol, loop, nearPeople, farPeople, horses, cartMesh, propMeshes,
       nearAttr, farAttr, hAttr, cAttr,
       npcTint0, npcTint1, npcTint2, horseTints,
       mats, bestIds, bestD2, horseSrc,
@@ -688,6 +716,32 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
     const refZ = walking ? pz : camera.position.z
     const nowMs = performance.now()
     const wavingNow = walking && nowMs < walk.waveUntil
+    const rollProgress = walking && walk.rollUntil > nowMs ? THREE.MathUtils.clamp(1 - (walk.rollUntil - nowMs) / ROLL_MS, 0, 1) : -1
+
+    // ---- patrol squad: hold for a cart close ahead or the walker standing in front of the lead rank, else march
+    if (patrol.members.length) {
+      let hold = false
+      for (const cr of carts) {
+        const ahead = (((cr.distance - patrol.lead) % loop) + loop) % loop
+        if (ahead > 0 && ahead < 5.5) { hold = true; break }
+      }
+      if (!hold && walking) {
+        const lp = cartPose(patrol.lead + 1.2, F.L, patrolPoseOut)
+        const hx = originX + ux * lp.u + vx * lp.v, hz = originZ + uz * lp.u + vz * lp.v
+        hold = (hx - px) ** 2 + (hz - pz) ** 2 < 1.5 * 1.5
+      }
+      patrol.moving = advancePatrol(patrol, dt, F.L, hold)
+      let cx = 0, cz = 0
+      for (const id of patrol.members) {
+        const n = npcs[id]
+        const pp = patrolPose(patrol.lead, n.u, n.v, F.L, patrolPoseOut)
+        n.x = originX + ux * pp.u + vx * pp.v
+        n.z = originZ + uz * pp.u + vz * pp.v
+        n.face = F.yawU + pp.heading
+        cx += n.x; cz += n.z
+      }
+      PATROL_STATE.x = cx / patrol.members.length; PATROL_STATE.z = cz / patrol.members.length; PATROL_STATE.active = true
+    } else PATROL_STATE.active = false
 
     // Zero-alloc top-K nearest selection for the close skeletal citizen pool (wide 52 m radius eliminates up-close shape popping)
     let candCount = 0
@@ -728,6 +782,7 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
         if (slot.id === -1 && slot.gender === wantGender) {
           const npc = npcs[id]
           slot.id = id
+          slot.replied = false
           slot.citizen.reset()
           slot.citizen.configure({ role: npc.role, cut: npc.cut, fabric: npc.fabric, age: npc.age })
           slot.citizen.setPalette({
@@ -765,7 +820,12 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
         if (walking) {
           const dxp = x - px, dzp = z - pz
           const d2p = dxp * dxp + dzp * dzp
-          const want = d2p < 1.6 * 1.6 ? ((dxp * vx + dzp * vz) >= 0 ? 1.4 : -1.4) : 0
+          let want = d2p < 1.6 * 1.6 ? ((dxp * vx + dzp * vz) >= 0 ? 1.4 : -1.4) : 0
+          // step aside for the marching patrol as well
+          if (want === 0) for (const id of patrol.members) {
+            const ex = x - npcs[id].x!, ez = z - npcs[id].z!
+            if (ex * ex + ez * ez < 2.2 * 2.2) { want = (ex * vx + ez * vz) >= 0 ? 1.6 : -1.6; break }
+          }
           n.side += (want - n.side) * Math.min(1, dt * 3)
         }
         yaw = (n.kind === 'cross' ? F.yawV : F.yawU) + (n.dir > 0 ? 0 : Math.PI)
@@ -776,6 +836,8 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
         x = n.x! + (n.bx! - n.x!) * n.u + Math.cos(n.face!) * n.v
         z = n.z! + (n.bz! - n.z!) * n.u - Math.sin(n.face!) * n.v
         yaw = n.face! + (n.dir > 0 ? 0 : Math.PI); gait = 0.45
+      } else if (n.kind === 'patrol') {
+        x = n.x!; z = n.z!; yaw = n.face!; gait = patrol.moving ? 0.5 : 0
       } else {
         x = n.x!; z = n.z!; yaw = n.face!
       }
@@ -811,10 +873,14 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
           const isTalking = (n.kind === 'idle' || n.kind === 'merchant') && n.pose === POSE.talk
           const isPraying = n.kind === 'priest'
           const isGuard = n.kind === 'guard'
+          const isPatrol = n.kind === 'patrol'
+          // a citizen answering the walker's greeting raises its arm once per greeting
+          if (replying && !slot.replied) slot.citizen.wave(1.8)
+          slot.replied = replying
           const merchantReach = isMerchantStall ? Math.max(0, Math.sin(clock.current * 0.9 + n.phase)) * 0.72 : 0
           const prayBow = isPraying ? (Math.sin(clock.current * 0.55 + n.phase) * 0.5 + 0.5) * 0.34 : 0
           const talkPulse = isTalking && Math.sin(clock.current * 0.65 + n.phase * 1.7) > 0.78
-          const guardLook = isGuard ? Math.sin(clock.current * 0.45 + n.phase) * 0.55 : n.look
+          const guardLook = isGuard ? Math.sin(clock.current * 0.45 + n.phase) * 0.55 : isPatrol && patrol.moving ? 0 : n.look
           rigSphere.center.set(pos.x, pos.y + 0.95 * n.stature, pos.z)
           rigSphere.radius = 1.75 * Math.max(n.stature, n.build)
           const cdx = pos.x - camX, cdy = rigSphere.center.y - camY, cdz = pos.z - camZ
@@ -825,8 +891,10 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
           slot.citizen.update(dt, {
             speed: gait ? n.speed : 0,
             grounded: true,
-            wave: replying || talkPulse,
+            wave: replying,
+            talk: talkPulse,
             look: guardLook,
+            syncTime: isPatrol ? clock.current : undefined,
             bend: isMerchantStall ? merchantReach * 0.24 : prayBow,
             reach: merchantReach,
             groundAt: probeFeet ? footGround : footGroundFar,
@@ -865,11 +933,13 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
     if (sim.avatar?.root.visible) {
       pos.set(walk.x, walk.feet, walk.z); q.setFromAxisAngle(up, walk.yaw + Math.PI)
       sim.avatar.root.position.copy(pos); sim.avatar.root.quaternion.copy(q)
-      sim.avatar.update(dt, { speed: walk.speed, grounded: walk.grounded, wave: wavingNow, look: 0, groundAt: footGround })
+      sim.avatar.update(dt, { speed: walk.speed, grounded: walk.grounded, wave: wavingNow, look: 0, groundAt: footGround, roll: rollProgress })
     } else if (walking && walk.view === 'third' && nearCount < nearPeople.instanceMatrix.count) {
       pos.set(walk.x, walk.feet, walk.z); q.setFromAxisAngle(up, walk.yaw + Math.PI)
       m4.compose(pos, q, one)
-      writePersonSlot(nearPeople, nearAttr, nearCount++, av, 0, walk.speed < 0.3 ? 0 : walk.speed > 4 ? 1 : 0.5, wavingNow ? POSE.wave : POSE.walk, 0)
+      // POSE.roll reads its progress from the look slot (iAnim.w)
+      const avPose = rollProgress >= 0 ? POSE.roll : wavingNow ? POSE.wave : POSE.walk
+      writePersonSlot(nearPeople, nearAttr, nearCount++, av, 0, walk.speed < 0.3 ? 0 : walk.speed > 4 ? 1 : 0.5, avPose, rollProgress >= 0 ? rollProgress : 0)
     }
 
     nearPeople.count = nearCount
@@ -908,9 +978,13 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
       }
     }
     let horseCount = 0, cartCount = 0, horseTintDirty = false
+    const patrolRear = patrol.lead - (PATROL.ranks - 1) * PATROL.rankGap
     for (let i = 0; i < carts.length; i++) {
       const cr = carts[i]
-      cr.distance += cr.speed * dt
+      const toPatrol = patrol.members.length ? (((patrolRear - cr.distance) % loop) + loop) % loop : Infinity
+      // a cart closing on the patrol's rear rank waits (no overlap with the marching squad)
+      const cartMoving = !(toPatrol > 0 && toPatrol < 4.5)
+      if (cartMoving) cr.distance += cr.speed * dt
       const lead = cartPose(cr.distance, F.L, leadPose)
       const x = originX + ux * lead.u + vx * lead.v
       const z = originZ + uz * lead.u + vz * lead.v
@@ -930,7 +1004,7 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
         horse.root.visible = true
         horse.root.position.copy(pos)
         horse.root.quaternion.copy(q)
-        horse.mixer.update(dt * cr.speed / 1.4)
+        horse.mixer.update(cartMoving ? dt * cr.speed / 1.4 : 0)
         horse.syncHarness()
       } else {
         m4.compose(pos, q, one)
@@ -939,7 +1013,7 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
           horseSrc[horseCount] = i; horseTintDirty = true
           hAttr.tint0.setXYZ(horseCount, horseTints[i * 3], horseTints[i * 3 + 1], horseTints[i * 3 + 2])
         }
-        hAttr.anim.setXYZW(horseCount, cr.phase, 0.5, 0, 0)
+        hAttr.anim.setXYZW(horseCount, cr.phase, cartMoving ? 0.5 : 0, 0, 0)
         horseCount++
       }
       q.setFromAxisAngle(up, Math.atan2(x - cx, z - cz))

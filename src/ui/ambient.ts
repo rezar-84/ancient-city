@@ -1,10 +1,12 @@
 /** Sound settings hub: per-layer volumes (persisted per browser), the general ambience loop, and
  *  narration ducking. Starts on the first user gesture. */
-import { LAYERS, applySettings, duckLayers, ensureAudio, layerInput, settings, stopVoice, type Layer } from '../audio/engine'
+import { LAYERS, applySettings, duckLayers, ensureAudio, layerInput, pageHidden, settings, stopVoice, trackMediaElement, type Layer } from '../audio/engine'
 
 const KEY = 'hierapolis.sound.v3' // v3: quieter defaults, insect-free ambience
 
 let el: HTMLAudioElement | null = null
+let breezeGain: GainNode | null = null
+let breezeLevel = 1
 let started = false
 const listeners = new Set<() => void>()
 
@@ -24,10 +26,21 @@ export function startAmbient() {
   const c = ensureAudio()
   if (!el) {
     el = new Audio('/audio/sfx/breeze.mp3'); el.loop = true
+    trackMediaElement(el)
     const input = layerInput('ambience')
-    if (c && input) c.createMediaElementSource(el).connect(input)
+    if (c && input) {
+      breezeGain = c.createGain(); breezeGain.gain.value = breezeLevel
+      c.createMediaElementSource(el).connect(breezeGain).connect(input)
+    }
   }
-  void el.play().catch(() => undefined)
+  if (!pageHidden()) void el.play().catch(() => undefined)
+}
+
+/** relative level of the general breeze loop (time of day: quieter at night) */
+export function setBreezeLevel(v: number) {
+  if (Math.abs(v - breezeLevel) < 0.01) return
+  breezeLevel = v
+  if (breezeGain) breezeGain.gain.setTargetAtTime(v, breezeGain.context.currentTime, 1.5)
 }
 
 export function setVolume(layer: Layer | 'master', v: number) {

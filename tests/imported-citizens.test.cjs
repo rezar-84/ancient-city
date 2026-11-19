@@ -53,13 +53,13 @@ test('both imported models animate independently with normalized skin weights an
 test('jump, landing, greeting, and pool reuse select the intended imported clips', async () => {
   const { instantiateCitizen, male, motions } = await setup
   const c = instantiateCitizen(male, motions, 'greek', palette())
-  const update = (speed, grounded, wave = false) => c.update(0.05, { speed, grounded, wave, look: 0 })
+  const update = (speed, grounded, wave = false, talk = false) => c.update(0.05, { speed, grounded, wave, talk, look: 0 })
   update(0, false); assert.equal(c.action, 'Jump_Start')
   for (let i = 0; i < 10; i++) update(0, false)
   assert.equal(c.action, 'Jump_Loop')
   update(0, true); assert.equal(c.action, 'Jump_Land')
   for (let i = 0; i < 5; i++) update(0, true)
-  update(0, true, true); assert.equal(c.action, 'Idle_Talking_Loop')
+  update(0, true, false, true); assert.equal(c.action, 'Idle_Talking_Loop')
   c.reset(); assert.equal(c.action, 'Idle_Loop')
   c.dispose()
 })
@@ -256,4 +256,89 @@ test('rigs keep frustum culling with a fixed sphere, accessories skip shadows, a
   assert.equal(cloth.visible, true)
   assert.ok(Array.from(cloth.geometry.getAttribute('position').array).every(Number.isFinite))
   c.dispose()
+})
+
+test('greeting raises the right hand above the head with a blended additive wave, then releases it', async () => {
+  const { instantiateCitizen, male, female, motions } = await setup
+  for (const model of [male, female]) {
+    const c = instantiateCitizen(model, motions, 'roman', palette())
+    const hand = c.root.getObjectByName('hand_r'), head = c.root.getObjectByName('Head'), shoulder = c.root.getObjectByName('upperarm_r')
+    const p = new THREE.Vector3(), h = new THREE.Vector3(), s = new THREE.Vector3()
+    const still = { speed: 0, grounded: true, wave: false, look: 0 }
+    for (let i = 0; i < 10; i++) c.update(1 / 30, still)
+    c.root.updateMatrixWorld(true)
+    assert.ok(hand.getWorldPosition(p).y < shoulder.getWorldPosition(s).y)
+    c.wave(2)
+    c.update(1 / 30, still)
+    assert.ok(c.waving > 0 && c.waving < 0.25, 'blends in over 0.25 s')
+    const xs = []
+    for (let i = 0; i < 30; i++) {
+      c.update(1 / 30, still); c.root.updateMatrixWorld(true)
+      xs.push(hand.getWorldPosition(p).x)
+    }
+    assert.equal(c.waving, 1)
+    assert.equal(c.action, 'Idle_Loop', 'arm-only overlay, no talking clip')
+    assert.ok(p.y > head.getWorldPosition(h).y - 0.05, `hand ${p.y} vs head ${h.y}`)
+    assert.ok(Math.max(...xs) - Math.min(...xs) > 0.08, 'hand swings side to side')
+    // also while walking slowly, but not at a jog
+    c.wave(1); for (let i = 0; i < 10; i++) c.update(1 / 30, { ...still, speed: 1.2 })
+    assert.ok(c.waving > 0.9)
+    for (let i = 0; i < 40; i++) c.update(1 / 30, still)
+    assert.equal(c.waving, 0)
+    c.root.updateMatrixWorld(true)
+    assert.ok(hand.getWorldPosition(p).y < shoulder.getWorldPosition(s).y, 'arm released')
+    c.dispose()
+  }
+})
+
+test('roll tumbles only the visual pivot a full turn about the hips and restores it', async () => {
+  const { instantiateCitizen, male, motions } = await setup
+  const c = instantiateCitizen(male, motions, 'roman', palette())
+  const tumble = c.root.getObjectByName('CitizenTumble')
+  assert.ok(tumble && tumble.parent === c.root)
+  const m = (roll) => ({ speed: 4, grounded: true, wave: false, look: 0, roll })
+  c.update(0.016, m(0.05)); assert.equal(c.action, 'Jump_Loop')
+  c.update(0.016, m(0.5))
+  assert.ok(c.root.quaternion.equals(new THREE.Quaternion()), 'physics root untouched')
+  const up = new THREE.Vector3(0, 1, 0).applyQuaternion(tumble.quaternion)
+  assert.ok(up.y < -0.99, 'upside down mid-roll')
+  const pelvis = c.root.getObjectByName('pelvis'), hip = new THREE.Vector3()
+  c.root.updateMatrixWorld(true); pelvis.getWorldPosition(hip)
+  assert.ok(hip.y > 0.2 && hip.y < 0.85, `hip ${hip.y} sinks mid-roll`)
+  c.update(0.016, m(-1))
+  assert.equal(tumble.position.lengthSq(), 0)
+  assert.ok(tumble.quaternion.equals(new THREE.Quaternion()))
+  assert.notEqual(c.action, 'Jump_Loop')
+  c.dispose()
+})
+
+test('soldier shields are oval in the Hellenistic and Roman eras and round in the Byzantine era', async () => {
+  const { instantiateCitizen, male, motions } = await setup
+  const extent = {}
+  for (const era of ['greek', 'roman', 'byzantine']) {
+    const c = instantiateCitizen(male, motions, era, palette())
+    c.configure({ role: 'soldier' })
+    const shield = c.root.getObjectByName('lowerarm_l').children.find(o => o.isMesh && o.visible)
+    shield.geometry.computeBoundingBox()
+    const size = shield.geometry.boundingBox.getSize(new THREE.Vector3())
+    extent[era] = size.y / size.z
+    c.dispose()
+  }
+  assert.ok(extent.greek > 1.6 && extent.roman > 1.3, JSON.stringify(extent))
+  assert.ok(Math.abs(extent.byzantine - 1 / 1.06) < 0.05)
+})
+
+test('marching rigs sharing a clock share the stride phase', async () => {
+  const { instantiateCitizen, male, motions } = await setup
+  const a = instantiateCitizen(male, motions, 'roman', palette()), b = instantiateCitizen(male, motions, 'roman', palette())
+  for (let i = 0; i < 7; i++) a.update(0.05, { speed: 1.6, grounded: true, wave: false, look: 0 })
+  let clock = 3.1
+  for (let i = 0; i < 20; i++) {
+    clock += 0.05
+    a.update(0.05, { speed: 1.6, grounded: true, wave: false, look: 0, syncTime: clock })
+    b.update(0.05, { speed: 1.6, grounded: true, wave: false, look: 0, syncTime: clock })
+  }
+  const qa = a.root.getObjectByName('thigh_l').quaternion, qb = b.root.getObjectByName('thigh_l').quaternion
+  assert.ok(Math.abs(qa.dot(qb)) > 0.999)
+  a.dispose(); b.dispose()
 })

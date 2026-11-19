@@ -20,6 +20,9 @@ import { isLight } from './quality'
 const POLE_H = 2.1
 const LIT_KINDS = new Set(['sacred', 'christian', 'leisure', 'defence', 'civic'])
 
+/** Current torch positions (local metres), read by the place audio for night-time crackle. */
+export const TORCH_SPOTS: { list: Array<[number, number, number]> } = { list: [] }
+
 function torchSpots(t: Terrain, year: number, gated: boolean) {
   const out: Array<[number, number, number]> = []
   const f = gridFrame(t)
@@ -134,6 +137,7 @@ export default function Torches({ terrain }: { terrain: Terrain }) {
   // rebuild only when the year crosses a century (monuments appear/vanish on that scale)
   const bucket = gated ? Math.floor(year / 50) : 0
   const spots = useMemo(() => torchSpots(terrain, bucket * 50 + 25, gated), [terrain, bucket, gated])
+  useEffect(() => { TORCH_SPOTS.list = spots; return () => { if (TORCH_SPOTS.list === spots) TORCH_SPOTS.list = [] } }, [spots])
   const pole = useMemo(poleGeometry, [])
   const poleMat = useMemo(() => new THREE.MeshStandardMaterial({ color: '#5a4630', metalness: 0.55, roughness: 0.5 }), [])
   const flame = useMemo(flameMaterial, [])
