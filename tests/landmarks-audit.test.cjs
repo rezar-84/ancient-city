@@ -144,6 +144,19 @@ test('all 17 numbered landmarks and 6 playable characters preserve IDs, sources,
     assert.ok(l.sources.length >= 1)
   }
   assert.deepEqual(Array.from(CHARACTERS, c => c.id), ['theano', 'nikias', 'aurelia', 'ammianos', 'eudokia', 'philippos'])
+  const landmarkIdSet = new Set(LANDMARKS.map(l => l.id))
+  for (const c of CHARACTERS) {
+    assert.ok(c.backstory.en.length > 40 && c.backstory.tr.length > 40, `${c.id} must have EN/TR backstory`)
+    assert.ok(c.goal.en.length > 20 && c.goal.tr.length > 20, `${c.id} must have EN/TR goal`)
+    assert.ok(c.greeting.text && c.greeting.gloss.en && c.greeting.gloss.tr, `${c.id} must have greeting`)
+    assert.ok(c.voice.pitch > 0.5 && c.voice.rate > 0.5, `${c.id} must have valid voice profile`)
+    const refs = Object.keys(c.reflections)
+    assert.ok(refs.length >= 3, `${c.id} must have at least 3 landmark reflections`)
+    for (const refId of refs) {
+      assert.ok(landmarkIdSet.has(refId), `${c.id} reflection references unknown landmark ${refId}`)
+      assert.ok(c.reflections[refId].en && c.reflections[refId].tr)
+    }
+  }
 })
 
 test('era-specific sanctuary phases and accessible monument interiors hold across 150 BC, AD 200, and AD 500', async () => {
@@ -197,5 +210,17 @@ test('era-specific sanctuary phases and accessible monument interiors hold acros
   for (const l of LANDMARKS) {
     assert.ok(l.lat >= PLAN_VIEW.s && l.lat <= PLAN_VIEW.n, `${l.id} lat outside printable PLAN_VIEW`)
     assert.ok(l.lon >= PLAN_VIEW.w && l.lon <= PLAN_VIEW.e, `${l.id} lon outside printable PLAN_VIEW`)
+  }
+
+  // Hillside monuments (Great Baths & St Philip Martyrium) foundations must reach below downhill terrain corners
+  cityRoot.updateMatrixWorld(true)
+  for (const id of ['baths', 'martyrium']) {
+    const obj = cityRoot.children.find(o => o.userData.landmark === id)
+    const box = new THREE.Box3().setFromObject(obj)
+    const minCornerT = Math.min(
+      terrain.heightAt(box.min.x, box.min.z), terrain.heightAt(box.max.x, box.min.z),
+      terrain.heightAt(box.min.x, box.max.z), terrain.heightAt(box.max.x, box.max.z),
+    )
+    assert.ok(box.min.y <= minCornerT + 0.5, `${id} foundation minY (${box.min.y.toFixed(2)}) floats above downhill terrain (${minCornerT.toFixed(2)})`)
   }
 })

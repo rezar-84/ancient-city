@@ -24,7 +24,7 @@ export function createWall(points: Array<[number, number]>, o: WallOptions = {})
       const x = ax + dx * (f0 + f1) / 2, z = az + dz * (f0 + f1) / 2;
       const y0 = heightAt(ax + dx * f0, az + dz * f0), y1 = heightAt(ax + dx * f1, az + dz * f1);
       const low = Math.min(y0, y1), high = Math.max(y0, y1);
-      b.box('limestone', t, h + 3 + high - low, length / count + 0.04, x - cx, (low + high + h - 3) / 2, z - cz, angle);
+      b.box('limestone', t, h + 6 + high - low, length / count + 0.04, x - cx, (low + high + h - 6) / 2, z - cz, angle);
       b.box('travertine', t + 0.2, 0.35, length / count + 0.05, x - cx, high + h, z - cz, angle);
       // crenellated parapet on the outer edge: one merlon every ~2.6 m
       const seg = length / count, nm = Math.max(1, Math.round(seg / 2.6));
@@ -36,13 +36,13 @@ export function createWall(points: Array<[number, number]>, o: WallOptions = {})
     while (nextTower <= distance + length) {
       const f = (nextTower - distance) / length;
       const x = ax + dx * f, z = az + dz * f, y = heightAt(x, z);
-      towers.push({ x: x - cx, y: y + (th - 3) / 2, z: z - cz, ry: angle });
+      towers.push({ x: x - cx, y: y + (th - 6) / 2, z: z - cz, ry: angle });
       caps.push({ x: x - cx, y: y + th, z: z - cz, ry: angle });
       nextTower += Math.max(1, towerSpacing);
     }
     distance += length;
   }
-  b.repeated('limestone', new THREE.BoxGeometry(tw, th + 3, tw), towers);
+  b.repeated('limestone', new THREE.BoxGeometry(tw, th + 6, tw), towers);
   b.repeated('travertine', new THREE.BoxGeometry(tw + 0.4, 0.5, tw + 0.4), caps);
   if (merlons.length) b.repeated('limestone', new THREE.BoxGeometry(0.6, 1.3, 1.4), merlons);
   return b.finish();

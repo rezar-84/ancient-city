@@ -7,7 +7,8 @@ export interface MartyriumOptions { size?: number; innerDiameter?: number; roomD
 export function createMartyrium(o: MartyriumOptions = {}): THREE.Group {
   const { size: s = 60, innerDiameter: diameter = 20, roomDepth: d = 8, hallHeight: h = 10, porticoDepth: pd = 4 } = o;
   const b = new Building('St Philip Martyrium');
-  b.box('limestone', s + 2 * pd, 9.0, s + 2 * pd, 0, -4.5);
+  // Deep limestone hillside retaining plinth (16 m) so the 68 m platform never floats on the steep eastern slope
+  b.box('limestone', s + 2 * pd, 16.0, s + 2 * pd, 0, -8.0);
   // Processional stepped flights on all 4 cardinal 6m entrances descending up to 4.0 m in 0.22 m risers
   for (let side = 0; side < 4; side++) {
     const a = side * Math.PI / 2;

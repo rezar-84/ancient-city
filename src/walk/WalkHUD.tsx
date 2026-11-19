@@ -9,6 +9,7 @@ import { PlanSVG } from '../guide/PlanSVG'
 import { walk } from './WalkControls'
 import { formatYear } from '../i18n'
 import { TimeOfDayPanel } from '../ui/TimeOfDay'
+import { speakCharacterLine, stopCharacterVoice, voiceSupported } from '../audio/characterVoice'
 
 const tr = (lang: 'en' | 'tr', en: string, t: string) => (lang === 'en' ? en : t)
 const MAP_W = 170
@@ -17,6 +18,7 @@ const kx = Math.cos(((s + n) / 2) * Math.PI / 180)
 const MAP_H = MAP_W * ((n - s) / ((e - w) * kx))
 
 function exitWalk() {
+  stopCharacterVoice()
   if (document.pointerLockElement) void document.exitPointerLock()
   const st = useApp.getState()
   st.select(null)
@@ -40,6 +42,8 @@ export function WalkHUD() {
   const [near, setNear] = useState<string | null>(null)
   const [locked, setLocked] = useState(false)
   const [moved, setMoved] = useState(false)
+  const [storyOpen, setStoryOpen] = useState(false)
+  const [speaking, setSpeaking] = useState(false)
   const dot = useRef<HTMLDivElement>(null)
   const ribbon = useRef<HTMLDivElement>(null)
   const tint = useRef<HTMLDivElement>(null)
@@ -89,7 +93,15 @@ export function WalkHUD() {
       const k = ev.key.toLowerCase()
       if (k !== 'escape' && (ev.target instanceof HTMLInputElement || ev.target instanceof HTMLTextAreaElement)) return
       if (k === 'e' && !walkInputBlocked(useApp.getState()) && nearRef.current) interact(nearRef.current)
+      if (k === 'f' && !walkInputBlocked(useApp.getState()) && nearRef.current) {
+        window.dispatchEvent(new CustomEvent('walk:reflect', { detail: nearRef.current }))
+      }
+      if (k === 'j' && !walkInputBlocked(useApp.getState())) {
+        setStoryOpen((v) => !v)
+        if (document.pointerLockElement) void document.exitPointerLock()
+      }
       if (k === 'escape' && !useApp.getState().walkPaused) {
+        if (storyOpenRef.current) { setStoryOpen(false); return }
         const state = useApp.getState()
         state.walkEscape()
         if (useApp.getState().walkPaused && document.pointerLockElement) void document.exitPointerLock()
@@ -100,23 +112,52 @@ export function WalkHUD() {
   }, [active, year])
   const nearRef = useRef<string | null>(null)
   nearRef.current = near
+  const storyOpenRef = useRef(false)
+  storyOpenRef.current = storyOpen
 
   if (!active) return null
   const c = CHARACTERS.find((x) => x.id === character) ?? CHARACTERS[2]
   const nearL = near ? LANDMARKS.find((l) => l.id === near) : null
+  const hasReflection = !!(nearL && c.reflections[nearL.id])
   const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW']
+  const toggleBackstoryVoice = () => {
+    if (speaking) { stopCharacterVoice(); setSpeaking(false); return }
+    const ok = speakCharacterLine(`${c.backstory[lang]} ${c.goal[lang]}`, lang, { gender: c.gender, ...c.voice }, () => setSpeaking(false))
+    if (ok) setSpeaking(true)
+  }
 
   return (
     <div className="pointer-events-none absolute inset-0 z-20 select-none">
       {/* below the waterline: turquoise travertine water */}
       <div ref={tint} aria-hidden="true" className="absolute inset-0 opacity-0 transition-opacity duration-200" style={{ background: 'radial-gradient(ellipse at 50% 30%, rgba(120,210,205,0.35), rgba(20,90,100,0.6))', backdropFilter: 'blur(2px)' }} />
-      {/* character */}
-      <div className="glass pointer-events-auto absolute left-2.5 top-[max(0.625rem,env(safe-area-inset-top))] flex items-center gap-2.5 rounded-full py-1 pl-1 pr-4 sm:left-4 sm:top-4">
-        <img src={c.portrait} alt="" className="h-10 w-10 rounded-full object-cover object-top ring-2 ring-gold/70" />
-        <div className="leading-tight">
-          <p className="font-display text-sm">{c.name}</p>
-          <p className="text-[10px] text-travertine/65">{c.role[lang]} · {ERA_LABEL[c.era][lang]} · {formatYear(year, lang)}</p>
-        </div>
+      {/* character pill + backstory journal drawer (J) */}
+      <div data-walkui className="pointer-events-auto absolute left-2.5 top-[max(0.625rem,env(safe-area-inset-top))] sm:left-4 sm:top-4">
+        <button type="button" onClick={() => { setStoryOpen((v) => !v); if (document.pointerLockElement) void document.exitPointerLock() }}
+          aria-expanded={storyOpen} title={tr(lang, 'Character backstory & voice (J)', 'Karakter hikâyesi ve ses (J)')}
+          className="glass flex items-center gap-2.5 rounded-full py-1 pl-1 pr-4 text-left transition hover:ring-1 hover:ring-gold/60">
+          <img src={c.portrait} alt="" className="h-10 w-10 rounded-full object-cover object-top ring-2 ring-gold/70" />
+          <div className="leading-tight">
+            <p className="font-display text-sm">{c.name}</p>
+            <p className="text-[10px] text-travertine/65">{c.role[lang]} · {ERA_LABEL[c.era][lang]} · {formatYear(year, lang)}</p>
+          </div>
+        </button>
+        {storyOpen && (
+          <div className="glass mt-2 w-[min(90vw,360px)] rounded-2xl border border-gold/30 p-4 text-xs text-travertine shadow-2xl">
+            <p className="font-serif italic text-gold/90">“{c.greeting.text}”</p>
+            <p className="mt-2 leading-relaxed text-travertine/90">{c.backstory[lang]}</p>
+            <p className="mt-2.5 rounded-xl bg-black/30 px-3 py-2 text-[11px] text-travertine/85">
+              <strong className="text-gold">{tr(lang, 'Today’s goal:', 'Bugünün hedefi:')}</strong> {c.goal[lang]}
+            </p>
+            <div className="mt-3 flex items-center justify-between gap-2">
+              {voiceSupported() && (
+                <button type="button" className="btn-gold px-3 py-1.5 text-xs" onClick={toggleBackstoryVoice}>
+                  {speaking ? tr(lang, '■ Stop voice', '■ Sesi durdur') : tr(lang, '🔊 Hear backstory', '🔊 Hikâyeyi dinle')}
+                </button>
+              )}
+              <button type="button" className="btn-ghost px-3 py-1.5 text-xs" onClick={() => setStoryOpen(false)}>{tr(lang, 'Close · J', 'Kapat · J')}</button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* compass ribbon */}
@@ -167,11 +208,20 @@ export function WalkHUD() {
 
       {/* interaction prompt */}
       {nearL && !selected && (
-        <button className="glass pointer-events-auto absolute bottom-28 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full px-4 py-2 text-sm sm:bottom-24" onClick={() => interact(nearL.id)}>
-          <kbd className="hidden rounded bg-travertine/90 px-1.5 font-sans text-xs text-ink sm:inline">E</kbd>
-          <span className="sm:hidden">ⓘ</span>
-          {tr(lang, 'About', 'Hakkında')} <b className="font-display">{lname(nearL, lang)}</b>
-        </button>
+        <div data-walkui className="pointer-events-auto absolute bottom-28 left-1/2 flex -translate-x-1/2 items-center gap-2 sm:bottom-24">
+          <button className="glass flex items-center gap-2 rounded-full px-4 py-2 text-sm" onClick={() => interact(nearL.id)}>
+            <kbd className="hidden rounded bg-travertine/90 px-1.5 font-sans text-xs text-ink sm:inline">E</kbd>
+            <span className="sm:hidden">ⓘ</span>
+            {tr(lang, 'About', 'Hakkında')} <b className="font-display">{lname(nearL, lang)}</b>
+          </button>
+          {hasReflection && (
+            <button className="glass flex items-center gap-1.5 rounded-full border border-gold/40 px-3.5 py-2 text-sm text-gold"
+              onClick={() => window.dispatchEvent(new CustomEvent('walk:reflect', { detail: nearL.id }))}>
+              <kbd className="hidden rounded bg-gold/90 px-1.5 font-sans text-xs text-ink sm:inline">F</kbd>
+              🔊 {tr(lang, 'Reflect', 'Düşünce')}
+            </button>
+          )}
+        </div>
       )}
 
       {/* first-time help */}

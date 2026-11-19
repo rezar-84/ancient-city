@@ -9,7 +9,8 @@ export function createBaths(o: BathsOptions = {}): THREE.Group {
   const { width: w = 70, depth: d = 60, hallHeight: h = 14, courtDepth: court = 30, halls = 3 } = o;
   const b = new Building('Roman Baths'), blockZ = -court / 2, front = (d - court) / 2;
   const totalD = d + court;
-  b.box('limestone', w, 8.0, totalD, 0, -4.0);
+  // Deep limestone substructure (11 m) so downhill corners remain grounded on the western terrace slope
+  b.box('limestone', w, 11.0, totalD, 0, -5.5);
   // Stepped palaestra flight on +Z descending up to 3.3 m in 0.22 m risers so slope approaches stay walkable
   for (let step = 0; step < 15; step++) {
     const topY = 0.05 - step * 0.22;

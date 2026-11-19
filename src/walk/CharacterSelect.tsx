@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useApp } from '../store'
 import { CHARACTERS, ERA_LABEL, type Character } from '../content/characters'
 import { startAmbient } from '../ui/ambient'
+import { speakCharacterLine, stopCharacterVoice, voiceSupported } from '../audio/characterVoice'
 
 const ERA_ART: Record<Character['era'], string> = {
   hellenistic: '/art/sanctuary-hellenistic.jpg',
@@ -38,8 +39,20 @@ export function CharacterSelect() {
   const lang = useApp((s) => s.lang)
   const session = useApp((s) => s.walkSession)
   const [pick, setPick] = useState<Character>(CHARACTERS[2])
+  const [speaking, setSpeaking] = useState(false)
+  useEffect(() => {
+    stopCharacterVoice()
+    setSpeaking(false)
+    return () => stopCharacterVoice()
+  }, [pick.id, mode])
   if (mode !== 'choose') return null
   const eras = ['hellenistic', 'roman', 'byzantine'] as const
+  const toggleVoice = () => {
+    if (speaking) { stopCharacterVoice(); setSpeaking(false); return }
+    const text = `${pick.greeting.gloss[lang]} ${pick.backstory[lang]}`
+    const ok = speakCharacterLine(text, lang, { gender: pick.gender, ...pick.voice }, () => setSpeaking(false))
+    if (ok) setSpeaking(true)
+  }
 
   return (
     <div className="absolute inset-0 z-40 overflow-y-auto bg-ink text-travertine">
@@ -92,9 +105,15 @@ export function CharacterSelect() {
         <img src={pick.portrait} alt="" className="h-14 w-11 shrink-0 rounded-xl object-cover sm:h-16 sm:w-12" />
         <div className="min-w-0 flex-1">
           <p className="truncate font-display text-base">{pick.name} <span className="text-xs text-travertine/60">· {pick.role[lang]} · {ERA_LABEL[pick.era][lang]}</span></p>
-          <p className="line-clamp-2 text-xs text-travertine/75">{pick.bio[lang]}</p>
+          <p className="line-clamp-2 text-xs text-travertine/80">{pick.backstory[lang]}</p>
+          <p className="mt-0.5 hidden truncate text-[11px] italic text-gold/85 sm:block">{tr(lang, 'Objective:', 'Hedef:')} {pick.goal[lang]}</p>
         </div>
-        <button className="btn-gold shrink-0 px-5 py-2.5" onClick={() => beginWalk(pick)}>{tr(lang, session ? 'Start new walk' : 'Begin', session ? 'Yeni yürüyüş' : 'Başla')} →</button>
+        {voiceSupported() && (
+          <button type="button" className="btn-ghost shrink-0 px-3 py-2 text-xs" onClick={toggleVoice}>
+            {speaking ? tr(lang, '■ Stop', '■ Durdur') : tr(lang, '🔊 Voice', '🔊 Ses')}
+          </button>
+        )}
+        <button className="btn-gold shrink-0 px-5 py-2.5" onClick={() => { stopCharacterVoice(); beginWalk(pick) }}>{tr(lang, session ? 'Start new walk' : 'Begin', session ? 'Yeni yürüyüş' : 'Başla')} →</button>
       </div>
     </div>
   )

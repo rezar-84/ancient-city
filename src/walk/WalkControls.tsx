@@ -8,6 +8,7 @@ import { GRID_AXES, HOUSE_RECTS, STREET_SEGS } from '../scene/CityGrid'
 import { CHARACTERS } from '../content/characters'
 import { GRID } from '../content/grid'
 import { sharedWorldProbe } from './physics'
+import { NPC_STATE } from './Crowd'
 import { sceneUniforms } from '../scene/Terrain'
 import { waterHere } from '../scene/Water'
 import { addRipple } from '../scene/water'
@@ -95,7 +96,7 @@ export function WalkControls() {
   const { camera, gl, scene } = useThree()
   const probe = sharedWorldProbe
   const houses = useRef<(x: number, z: number) => boolean>(() => false)
-  const st = useRef({ bob: 0, coyote: 0, buffer: 0, dip: 0, lastTapW: 0, sprintLatch: false, stepPhase: 0, camDist: 0 })
+  const st = useRef({ bob: 0, coyote: 0, buffer: 0, dip: 0, lastTapW: 0, sprintLatch: false, stepPhase: 0, camDist: 0, smoothFeet: Number.NaN })
   const active = mode === 'walk'
   const probeReady = useRef(false)
   const [terrainReady, setTerrainReady] = useState(() => !!getTerrain())
@@ -251,6 +252,7 @@ export function WalkControls() {
       }
       Object.assign(walk, { x: px, z: pz, yaw: p.yaw, pitch: 0, vx: 0, vz: 0, vy: 0, grounded: true })
       walk.feet = Math.max(t.heightAt(px, pz), probe.ground(px, pz, t.heightAt(px, pz) + STEP))
+      S.smoothFeet = walk.feet
       camera.position.set(px, walk.feet + EYE, pz)
     }
 
@@ -274,10 +276,15 @@ export function WalkControls() {
     const sx = Math.sin(walk.yaw), cz = Math.cos(walk.yaw)
     let wx = 0, wz = 0
     if (len > 0.05) {
-      wx = ((-sx * f) + (cz * r)) / Math.hypot(f, r) * target
-      wz = ((-cz * f) + (-sx * r)) / Math.hypot(f, r) * target
+      const dirX = ((-sx * f) + (cz * r)) / Math.hypot(f, r)
+      const dirZ = ((-cz * f) + (-sx * r)) / Math.hypot(f, r)
+      // Gentle uphill resistance on steep hillside streets & stairs
+      const aheadSlope = walk.grounded && !swimming ? (t.heightAt(walk.x + dirX * 0.9, walk.z + dirZ * 0.9) - t.heightAt(walk.x, walk.z)) / 0.9 : 0
+      const slopeMul = aheadSlope > 0.08 ? THREE.MathUtils.clamp(1 - (aheadSlope - 0.08) * 0.55, 0.72, 1) : 1
+      wx = dirX * target * slopeMul
+      wz = dirZ * target * slopeMul
     }
-    const accel = swimming ? 3 : walk.grounded ? 12 : 2.5
+    const accel = swimming ? 3.2 : walk.grounded ? (target > 0.05 ? 10.5 : 14.5) : 2.6
     walk.vx += (wx - walk.vx) * Math.min(1, accel * dt)
     walk.vz += (wz - walk.vz) * Math.min(1, accel * dt)
 
@@ -288,18 +295,40 @@ export function WalkControls() {
     if (swimming && S.buffer > 0) { walk.vy = 3.2; S.buffer = 0 } // kick up: climb out over the edge
     else if (S.buffer > 0 && S.coyote > 0) { walk.vy = JUMP_V; walk.grounded = false; S.buffer = 0; S.coyote = 0; walk.onJump.forEach(cb => cb()) }
 
-    // ---- horizontal move with wall sliding (knee + chest rays) and step-up
+    // ---- horizontal move with multi-ray shoulder capsule sweep, 2-pass wall sliding, and soft NPC separation
     const beforeX = walk.x, beforeZ = walk.z
     let mx = walk.vx * dt, mz = walk.vz * dt
-    const md = Math.hypot(mx, mz)
-    if (md > 1e-5) {
+    // Soft personal-space repulsion from nearby citizens so the walker flows around people instead of clipping through torsos
+    const sepR = 0.78
+    for (let i = 0; i < NPC_STATE.count; i++) {
+      const dx = walk.x + mx - NPC_STATE.x[i], dz = walk.z + mz - NPC_STATE.z[i]
+      const d2 = dx * dx + dz * dz
+      if (d2 > 1e-4 && d2 < sepR * sepR) {
+        const d = Math.sqrt(d2)
+        const push = (sepR - d) * Math.min(1, dt * 8) * 0.65
+        mx += (dx / d) * push
+        mz += (dz / d) * push
+      }
+    }
+    for (let pass = 0; pass < 2; pass++) {
+      const md = Math.hypot(mx, mz)
+      if (md <= 1e-5) break
+      const perpX = -mz / md, perpZ = mx / md
+      const shoulder = RADIUS * 0.58
+      let hitAny = false
       for (const hy of [0.55, 1.35]) {
-        const nn = probe.wall(walk.x, walk.feet + hy, walk.z, mx, mz, RADIUS + md, n)
-        if (nn) {
-          const into = mx * nn.x + mz * nn.z
-          if (into < 0) { mx -= nn.x * into; mz -= nn.z * into }
+        for (const side of [0, -shoulder, shoulder]) {
+          const nn = probe.wall(walk.x + perpX * side, walk.feet + hy, walk.z + perpZ * side, mx, mz, RADIUS + md, n)
+          if (nn) {
+            const into = mx * nn.x + mz * nn.z
+            if (into < 0) { mx -= nn.x * into; mz -= nn.z * into; hitAny = true }
+          }
         }
       }
+      if (!hitAny) break
+    }
+    const md = Math.hypot(mx, mz)
+    if (md > 1e-5) {
       const hb = t.meta.widthM * 0.48, hd = t.meta.depthM * 0.48
       const tryMove = (x: number, z: number) => {
         if (Math.abs(x) > hb || Math.abs(z) > hd || houses.current(x, z)) return false
@@ -381,11 +410,14 @@ export function WalkControls() {
       S.bob += dt * cadence * Math.PI
     }
 
-    // ---- camera
+    // ---- camera (smooth vertical step-up damping + subtle stride roll)
+    if (!Number.isFinite(S.smoothFeet) || Math.abs(walk.feet - S.smoothFeet) > 1.5) S.smoothFeet = walk.feet
+    else S.smoothFeet += (walk.feet - S.smoothFeet) * (1 - Math.exp(-dt * 18))
     S.dip *= Math.exp(-dt * 7)
-    const bobAmp = walk.water === 'swim' ? 0.035 : walk.grounded && walk.moving ? Math.min(0.06, 0.018 + hs * 0.006) : 0
-    const eyeY = walk.feet + EYE - S.dip + Math.sin(S.bob * 2) * bobAmp
-    euler.set(walk.pitch, walk.yaw, 0)
+    const bobAmp = walk.water === 'swim' ? 0.035 : walk.grounded && walk.moving ? Math.min(0.055, 0.016 + hs * 0.0055) : 0
+    const eyeY = S.smoothFeet + EYE - S.dip + Math.sin(S.bob * 2) * bobAmp
+    const strideRoll = walk.view === 'first' && walk.grounded && walk.moving ? Math.sin(S.bob) * Math.min(0.009, hs * 0.0018) : 0
+    euler.set(walk.pitch, walk.yaw, strideRoll)
     camera.quaternion.setFromEuler(euler)
     S.camDist += ((walk.view === 'third' ? 3.4 : 0) - S.camDist) * Math.min(1, dt * 6)
     back.set(0, 0, 1).applyQuaternion(camera.quaternion).multiplyScalar(S.camDist)
