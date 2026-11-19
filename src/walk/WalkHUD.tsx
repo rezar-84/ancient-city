@@ -9,7 +9,7 @@ import { PlanSVG } from '../guide/PlanSVG'
 import { walk } from './WalkControls'
 import { formatYear } from '../i18n'
 import { TimeOfDayPanel } from '../ui/TimeOfDay'
-import { speakCharacterLine, stopCharacterVoice, voiceSupported } from '../audio/characterVoice'
+import { playCharacterClip, stopCharacterVoice, voiceSupported } from '../audio/characterVoice'
 
 const tr = (lang: 'en' | 'tr', en: string, t: string) => (lang === 'en' ? en : t)
 const MAP_W = 170
@@ -122,7 +122,7 @@ export function WalkHUD() {
   const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW']
   const toggleBackstoryVoice = () => {
     if (speaking) { stopCharacterVoice(); setSpeaking(false); return }
-    const ok = speakCharacterLine(`${c.backstory[lang]} ${c.goal[lang]}`, lang, { gender: c.gender, ...c.voice }, () => setSpeaking(false))
+    const ok = playCharacterClip(c.id, 'intro', lang, `${c.greeting.gloss[lang]} ${c.backstory[lang]}`, { gender: c.gender, ...c.voice }, () => setSpeaking(false))
     if (ok) setSpeaking(true)
   }
 

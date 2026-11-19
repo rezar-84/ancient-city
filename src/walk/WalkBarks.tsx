@@ -4,7 +4,7 @@ import { BARKS } from '../content/barks'
 import { CHARACTERS } from '../content/characters'
 import { langForYear } from '../content/soundscapes'
 import { playBark } from '../audio/engine'
-import { speakCharacterLine, stopCharacterVoice } from '../audio/characterVoice'
+import { playCharacterClip, speakCharacterLine, stopCharacterVoice } from '../audio/characterVoice'
 import { NPC_STATE } from './Crowd'
 import { walk } from './WalkControls'
 
@@ -73,7 +73,7 @@ export function WalkBarks() {
       const thought = ch.reflections[landmarkId]
       if (!thought) return
       const spoken = thought[s.lang]
-      speakCharacterLine(spoken, s.lang, { gender: ch.gender, ...ch.voice })
+      playCharacterClip(ch.id, landmarkId, s.lang, spoken, { gender: ch.gender, ...ch.voice })
       showLine({ speaker: ch.name, text: spoken, accent: true }, 6500)
     }
 

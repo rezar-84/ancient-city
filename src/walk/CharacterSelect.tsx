@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useApp } from '../store'
 import { CHARACTERS, ERA_LABEL, type Character } from '../content/characters'
 import { startAmbient } from '../ui/ambient'
-import { speakCharacterLine, stopCharacterVoice, voiceSupported } from '../audio/characterVoice'
+import { playCharacterClip, stopCharacterVoice, voiceSupported } from '../audio/characterVoice'
 
 const ERA_ART: Record<Character['era'], string> = {
   hellenistic: '/art/sanctuary-hellenistic.jpg',
@@ -50,7 +50,7 @@ export function CharacterSelect() {
   const toggleVoice = () => {
     if (speaking) { stopCharacterVoice(); setSpeaking(false); return }
     const text = `${pick.greeting.gloss[lang]} ${pick.backstory[lang]}`
-    const ok = speakCharacterLine(text, lang, { gender: pick.gender, ...pick.voice }, () => setSpeaking(false))
+    const ok = playCharacterClip(pick.id, 'intro', lang, text, { gender: pick.gender, ...pick.voice }, () => setSpeaking(false))
     if (ok) setSpeaking(true)
   }
 
