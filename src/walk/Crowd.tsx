@@ -64,6 +64,12 @@ export const NPC_STATE: { x: Float32Array; z: Float32Array; count: number; femal
 }
 
 function roleBodyMetrics(role: CitizenRole, age: AgeGroup, female: boolean, rand: () => number) {
+  if (age === 'child') {
+    return { stature: 0.66 + rand() * 0.08, build: 0.73 + rand() * 0.07 } // ~1.16–1.30 m
+  }
+  if (age === 'adolescent') {
+    return { stature: 0.83 + rand() * 0.07, build: 0.80 + rand() * 0.08 } // ~1.45–1.58 m
+  }
   const genderScale = female ? 0.955 : 1.0
   let stature = (0.95 + rand() * 0.11) * genderScale
   let build = 0.93 + rand() * 0.15
@@ -221,19 +227,20 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
     const pickAge = (role: CitizenRole): AgeGroup => {
       const r = rand()
       if (role === 'soldier') return r < 0.25 ? 'young' : 'adult'
-      if (role === 'porter') return r < 0.38 ? 'young' : r < 0.9 ? 'adult' : 'older'
+      if (role === 'porter') return r < 0.14 ? 'adolescent' : r < 0.42 ? 'young' : r < 0.9 ? 'adult' : 'older'
       if (role === 'merchant' || role === 'priest') return r < 0.12 ? 'young' : r < 0.62 ? 'adult' : 'older'
-      return r < 0.22 ? 'young' : r < 0.76 ? 'adult' : 'older'
+      // Residents and pilgrims include children and adolescents alongside adults and elders
+      return r < 0.09 ? 'child' : r < 0.18 ? 'adolescent' : r < 0.34 ? 'young' : r < 0.78 ? 'adult' : 'older'
     }
     const pushNpc = (entry: Omit<Npc, 'age' | 'cut' | 'fabric' | 'stature' | 'build' | 'propIdx'> & { prop?: PropKind }, forceGender?: 0 | 1) => {
       const isFem = forceGender ?? (entry.role === 'soldier' ? 0 : entry.role === 'porter' ? (rand() < 0.15 ? 1 : 0) : rand() < 0.46 ? 1 : 0)
       const age = pickAge(entry.role)
       const { stature, build } = roleBodyMetrics(entry.role, age, !!isFem, rand)
-      const cut: GarmentCut = entry.role === 'porter' || entry.role === 'merchant' || entry.role === 'soldier' ? 'work' : 'full'
-      const fabric: FabricKind = entry.role === 'porter' ? 'linen'
+      const cut: GarmentCut = age === 'child' || entry.role === 'porter' || entry.role === 'merchant' || entry.role === 'soldier' ? 'work' : 'full'
+      const fabric: FabricKind = entry.role === 'porter' || age === 'child' ? 'linen'
         : entry.role === 'merchant' ? (rand() < 0.6 ? 'linen' : 'wool')
         : variant === 'roman' ? (rand() < 0.55 ? 'linen' : 'wool') : (rand() < 0.35 ? 'linen' : 'wool')
-      const propIdx = entry.prop ? PROP_INDEX[entry.prop] : -1
+      const propIdx = age === 'child' ? -1 : entry.prop ? PROP_INDEX[entry.prop] : -1
       femaleFlags.push(isFem)
       npcs.push({ ...entry, age, cut, fabric, stature, build, propIdx })
     }
@@ -440,9 +447,10 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
 
       if (n.age === 'older') hc.set(rand() < 0.5 ? '#9e978d' : '#b8b1a6')
       else hc.set(pal.hair[Math.floor(rand() * pal.hair.length)])
-      const veiled = (isFem && (variant === 'byzantine' || n.role === 'priest' || rand() < 0.35)) || (n.role === 'priest' && variant === 'byzantine')
+      const isYouth = n.age === 'child' || n.age === 'adolescent'
+      const veiled = !isYouth && ((isFem && (variant === 'byzantine' || n.role === 'priest' || rand() < 0.35)) || (n.role === 'priest' && variant === 'byzantine'))
       const hairCode = veiled ? HAIR.veiled : isFem ? HAIR.bun : (n.age === 'older' && rand() < 0.28 ? HAIR.bald : rand() < 0.45 ? HAIR.curly : HAIR.short)
-      const bearded = !isFem && n.age !== 'young' && (variant !== 'roman' || n.role !== 'soldier' ? rand() < 0.58 : rand() < 0.25)
+      const bearded = !isFem && !isYouth && n.age !== 'young' && (variant !== 'roman' || n.role !== 'soldier' ? rand() < 0.58 : rand() < 0.25)
       npcStyle[i * 4] = hc.r; npcStyle[i * 4 + 1] = hc.g; npcStyle[i * 4 + 2] = hc.b; npcStyle[i * 4 + 3] = hairCode + (bearded ? 5 : 0)
     })
 
@@ -725,7 +733,18 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
         if (slot.id === i) {
           slot.citizen.root.visible = true
           slot.citizen.root.position.copy(pos); slot.citizen.root.quaternion.copy(q); slot.citizen.root.scale.copy(one)
-          slot.citizen.update(dt, { speed: gait ? n.speed : 0, grounded: true, wave: replying, look: n.look, groundAt: footGround })
+          const isMerchantStall = n.role === 'merchant' && n.kind === 'merchant'
+          const merchantReach = isMerchantStall ? Math.max(0, Math.sin(clock.current * 0.9 + n.phase)) * 0.72 : 0
+          const merchantBend = isMerchantStall ? merchantReach * 0.24 : 0
+          slot.citizen.update(dt, {
+            speed: gait ? n.speed : 0,
+            grounded: true,
+            wave: replying,
+            look: n.look,
+            bend: merchantBend,
+            reach: merchantReach,
+            groundAt: footGround,
+          })
           handledByClose = true
           break
         }

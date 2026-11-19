@@ -8,7 +8,7 @@ export type Gender = 'm' | 'f'
 export type GarmentCut = 'work' | 'full'
 export type FabricKind = 'linen' | 'wool'
 export type CitizenRole = 'resident' | 'merchant' | 'porter' | 'soldier' | 'pilgrim' | 'priest'
-export type AgeGroup = 'young' | 'adult' | 'older'
+export type AgeGroup = 'child' | 'adolescent' | 'young' | 'adult' | 'older'
 export type Palette = { cloth: THREE.Color; skin: THREE.Color; accent: THREE.Color }
 export interface CitizenMotion {
   speed: number
@@ -16,6 +16,7 @@ export interface CitizenMotion {
   wave: boolean
   look: number
   bend?: number
+  reach?: number
   groundAt?: (x: number, z: number) => number
 }
 export interface CitizenConfig {
@@ -168,8 +169,8 @@ function makeOutfit(body: THREE.SkinnedMesh, era: Era, palette: Palette, gender:
   const hem = era === 'greek' ? 0.35 : era === 'roman' ? 0.31 : 0.18
   const foldCount = era === 'greek' ? 14 : era === 'roman' ? 12 : 10
   const foldAmp = era === 'greek' ? 0.032 : era === 'roman' ? 0.028 : 0.022
-  // Snug contoured waist opening smoothly into generous seat & stride volume below the belt.
-  const skirt = new THREE.CylinderGeometry(height * 0.15, height * 0.232, height * (0.61 - hem), 24, 5, true)
+  // Snug contoured waist opening smoothly into natural pleated seat & stride volume below the belt.
+  const skirt = new THREE.CylinderGeometry(height * 0.132, height * 0.168, height * (0.61 - hem), 24, 5, true)
     .translate(0, height * (0.61 + hem) / 2, 0)
   const sp = skirt.getAttribute('position'), si = new Uint16Array(sp.count * 4), sw = new Float32Array(sp.count * 4)
   const skirtColors = new Float32Array(sp.count * 3).fill(1)
@@ -233,21 +234,26 @@ function makeOutfit(body: THREE.SkinnedMesh, era: Era, palette: Palette, gender:
   })
 
   // Role-specific historical garments & equipment (created once per pooled citizen, toggled cleanly via visibility)
-  const mantleGeo = new THREE.CylinderGeometry(waistX * 1.12, waistX * 1.32, height * (era === 'byzantine' ? 0.44 : 0.36), 18, 2, true, 0.2, Math.PI * 1.48)
+  // Close-draped himation / palla shawl: wraps back and one shoulder without protruding above collar or in front of face
+  const mantleGeo = new THREE.CylinderGeometry(waistX * 1.05, waistX * 1.13, height * 0.24, 18, 2, true, Math.PI * 0.55, Math.PI * 1.25)
   const mp = mantleGeo.getAttribute('position')
-  for (let i = 0; i < mp.count; i++) mp.setY(i, mp.getY(i) + height * 0.075 * Math.sin(Math.atan2(mp.getZ(i), mp.getX(i))))
-  mantleGeo.scale(1, 1, (waistZ / waistX) * 1.08).translate(0, height * 0.68, centerZ)
+  for (let i = 0; i < mp.count; i++) {
+    const ang = Math.atan2(mp.getZ(i), mp.getX(i))
+    mp.setY(i, mp.getY(i) + height * 0.022 * Math.cos(ang))
+  }
+  mantleGeo.scale(1, 1, (waistZ / waistX) * 1.04).translate(0, height * 0.70, centerZ - 0.006)
   const mantle = makeRigidSkinned(mantleGeo, spine2 >= 0 ? spine2 : pelvis, body.skeleton, body.bindMatrix, trim)
 
-  // Hooded travel cape (paenula / birrus) for merchants & pilgrims + maphorion veil for Byzantine women
-  const capeGeo = new THREE.ConeGeometry(waistX * 1.45, height * 0.26, 16, 1, true)
+  // Fitted shoulder cape (paenula / birrus) resting from neck collar over shoulders (pilgrims & Byzantine clergy)
+  const capeGeo = new THREE.CylinderGeometry(waistX * 0.56, waistX * 1.18, height * 0.18, 18, 1, true)
     .scale(1, 1, 0.82)
-    .translate(0, height * 0.76, centerZ - 0.01)
+    .translate(0, height * 0.785, centerZ - 0.008)
   const cape = makeRigidSkinned(capeGeo, spine2 >= 0 ? spine2 : pelvis, body.skeleton, body.bindMatrix, trim)
 
-  const veilGeo = new THREE.SphereGeometry(height * 0.082, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.72)
-    .scale(1, 1.28, 1.08)
-    .translate(0, height * 0.90, centerZ - 0.015)
+  // Open-front head veil / monastic cowl: covers crown, back, and temples while keeping the face (+Z) completely open
+  const veilGeo = new THREE.SphereGeometry(height * 0.078, 14, 8, Math.PI * 0.82, Math.PI * 1.36, 0, Math.PI * 0.78)
+    .scale(1.02, 1.18, 1.08)
+    .translate(0, height * 0.905, centerZ - 0.012)
   const veil = makeRigidSkinned(veilGeo, headIdx >= 0 ? headIdx : spine2, body.skeleton, body.bindMatrix, gender === 'f' && era === 'byzantine' ? trim : cloth)
 
   // Soldier: scale/lamellar cuirass + INDEPENDENT military equipment belt (cingulum militare with pteruges) + helmet + spear + Byzantine/Greek shield
@@ -303,7 +309,13 @@ function makeOutfit(body: THREE.SkinnedMesh, era: Era, palette: Palette, gender:
   ])
   const pilgrimGear = makeRigidSkinned(pilgrimGeo, pelvis, body.skeleton, body.bindMatrix, woodMat)
 
-  const extraMeshes = [mantle, cape, veil, cuirass, cingulum, helmet, spear, shield, porterLoad, pilgrimGear]
+  // Merchant belt coin pouch (marsupium) hanging cleanly at the right hip
+  const pouchGeo = new THREE.SphereGeometry(0.042, 10, 8)
+    .scale(0.85, 1.25, 0.75)
+    .translate(-waistX * 1.04, height * 0.565, centerZ + 0.035)
+  const merchantPouch = makeRigidSkinned(pouchGeo, pelvis, body.skeleton, body.bindMatrix, leatherMat)
+
+  const extraMeshes = [mantle, cape, veil, cuirass, cingulum, helmet, spear, shield, porterLoad, pilgrimGear, merchantPouch]
   extraMeshes.forEach(m => { m.visible = false })
 
   return {
@@ -313,14 +325,15 @@ function makeOutfit(body: THREE.SkinnedMesh, era: Era, palette: Palette, gender:
     clothMat: cloth,
     trimMat: trim,
     uWeave,
-    setRoleVisuals(role: CitizenRole) {
+    setRoleVisuals(role: CitizenRole, age: AgeGroup = 'adult') {
       extraMeshes.forEach(m => { m.visible = false })
       baseMeshes[2].visible = role !== 'soldier' // soldier uses independent cingulum equipment belt
+      const isYouth = age === 'child' || age === 'adolescent'
       if (role === 'resident') {
-        mantle.visible = true
-        veil.visible = gender === 'f' && era === 'byzantine'
+        mantle.visible = !isYouth
+        veil.visible = !isYouth && gender === 'f' && era === 'byzantine'
       } else if (role === 'merchant') {
-        cape.visible = era !== 'greek'
+        merchantPouch.visible = true
       } else if (role === 'porter') {
         porterLoad.visible = true
       } else if (role === 'soldier') {
@@ -330,9 +343,9 @@ function makeOutfit(body: THREE.SkinnedMesh, era: Era, palette: Palette, gender:
         spear.visible = true
         shield.visible = era !== 'roman'
       } else if (role === 'pilgrim') {
-        cape.visible = true
-        pilgrimGear.visible = true
-        veil.visible = gender === 'f' && era === 'byzantine'
+        cape.visible = !isYouth
+        pilgrimGear.visible = !isYouth
+        veil.visible = !isYouth && gender === 'f' && era === 'byzantine'
       } else if (role === 'priest') {
         mantle.visible = era !== 'byzantine'
         cape.visible = era === 'byzantine'
@@ -371,7 +384,9 @@ function secondaryMotion(root: THREE.Group, skirt: THREE.SkinnedMesh, fabricPara
       bones: [thigh, calf, foot], saved: [thigh, calf, foot].map(b => b.quaternion.clone()), adjusted: false }
   })
   const spine1 = root.getObjectByName('spine_01'), spine2 = root.getObjectByName('spine_02'), headBone = root.getObjectByName('Head')
-  const postureBones = [spine1, spine2, headBone].filter(Boolean) as THREE.Object3D[]
+  const upperArmR = root.getObjectByName('upperarm_r'), lowerArmR = root.getObjectByName('lowerarm_r')
+  const upperArmL = root.getObjectByName('upperarm_l'), lowerArmL = root.getObjectByName('lowerarm_l')
+  const postureBones = [spine1, spine2, headBone, upperArmR, lowerArmR, upperArmL, lowerArmL].filter(Boolean) as THREE.Object3D[]
   const postureSaved = postureBones.map(b => b.quaternion.clone())
   let postureAdjusted = false
 
@@ -414,10 +429,12 @@ function secondaryMotion(root: THREE.Group, skirt: THREE.SkinnedMesh, fabricPara
   return {
     restore,
     setStoop(rad: number) { extraStoop = rad },
+    setHeadScale(s: number) { if (headBone) headBone.scale.setScalar(s) },
     reset() { restore(); ready = false; accumulator = 0 },
     update(dt: number, motion: CitizenMotion) {
-      const totalBend = extraStoop + (motion.bend ?? 0)
-      if (Math.abs(totalBend) > 1e-4 || Math.abs(motion.look) > 1e-4) {
+      const reach = THREE.MathUtils.clamp(motion.reach ?? 0, 0, 1)
+      const totalBend = extraStoop + (motion.bend ?? 0) + reach * 0.16
+      if (Math.abs(totalBend) > 1e-4 || Math.abs(motion.look) > 1e-4 || reach > 1e-4) {
         postureBones.forEach((bone, i) => postureSaved[i].copy(bone.quaternion))
         postureAdjusted = true
         if (spine1 && Math.abs(totalBend) > 1e-4) spine1.rotateX(totalBend * 0.55)
@@ -425,6 +442,13 @@ function secondaryMotion(root: THREE.Group, skirt: THREE.SkinnedMesh, fabricPara
         if (headBone) {
           if (Math.abs(totalBend) > 1e-4) headBone.rotateX(-totalBend * 0.45)
           if (Math.abs(motion.look) > 1e-4) headBone.rotateY(THREE.MathUtils.clamp(motion.look, -0.85, 0.85) * 0.55)
+        }
+        if (reach > 1e-4) {
+          // Merchant / artisan reaching forward (+Z) over a counter or stall bench
+          if (upperArmR) { upperArmR.rotateX(reach * 0.92); upperArmR.rotateZ(-reach * 0.14) }
+          if (lowerArmR) lowerArmR.rotateX(reach * 0.25)
+          if (upperArmL) { upperArmL.rotateX(reach * 0.58); upperArmL.rotateZ(reach * 0.12) }
+          if (lowerArmL) lowerArmL.rotateX(reach * 0.22)
         }
       }
       root.updateWorldMatrix(true, true)
@@ -604,14 +628,15 @@ export function instantiateCitizen(model: GLTF, motions: GLTF, era: Era, palette
     const ageStoop = currentAge === 'older' ? 0.13 : 0
     const roleStoop = currentRole === 'porter' ? 0.16 : currentRole === 'merchant' && currentAge === 'older' ? 0.06 : 0
     secondary.setStoop(ageStoop + roleStoop)
+    secondary.setHeadScale(currentAge === 'child' ? 1.14 : currentAge === 'adolescent' ? 1.05 : 1)
   }
   const applyCut = (cut: GarmentCut) => {
     if (cut === currentCut) return
     currentCut = cut
-    const porterHitch = currentRole === 'porter' ? -0.05 : 0
+    const porterHitch = currentRole === 'porter' ? -0.05 : currentAge === 'child' ? -0.045 : 0
     for (let i = 0; i < workCut.count; i++) {
       const row = Math.floor(i / 25) / 5
-      const extra = cut === 'full' ? row * row : 0
+      const extra = cut === 'full' && currentAge !== 'child' ? row * row : 0
       skirtPositions.setXYZ(
         i,
         workCut.getX(i) * (1 + extra * 0.11),
@@ -633,16 +658,18 @@ export function instantiateCitizen(model: GLTF, motions: GLTF, era: Era, palette
     setFabric(fabric: FabricKind) { applyFabric(fabric) },
     setRole(role: CitizenRole) {
       currentRole = role
-      outfit.setRoleVisuals(role)
+      outfit.setRoleVisuals(role, currentAge)
       syncStoop()
     },
     setAge(age: AgeGroup) {
       currentAge = age
+      outfit.setRoleVisuals(currentRole, currentAge)
       syncStoop()
     },
     configure(cfg: CitizenConfig) {
-      if (cfg.role) { currentRole = cfg.role; outfit.setRoleVisuals(cfg.role) }
+      if (cfg.role) currentRole = cfg.role
       if (cfg.age) currentAge = cfg.age
+      outfit.setRoleVisuals(currentRole, currentAge)
       if (cfg.fabric) applyFabric(cfg.fabric)
       syncStoop()
       if (cfg.cut) {
@@ -669,7 +696,10 @@ export function instantiateCitizen(model: GLTF, motions: GLTF, era: Era, palette
       else if (elapsed < gestureUntil && motion.speed < 0.3) choose('Idle_Talking_Loop')
       else choose(motion.speed < 0.15 ? 'Idle_Loop' : motion.speed < 3.5 ? 'Walk_Loop' : motion.speed < 6 ? 'Jog_Fwd_Loop' : 'Sprint_Loop')
       lastGrounded = motion.grounded
-      if (current && ['Walk_Loop', 'Jog_Fwd_Loop', 'Sprint_Loop'].includes(actionName)) current.setEffectiveTimeScale(THREE.MathUtils.clamp(motion.speed / (actionName === 'Walk_Loop' ? 1.5 : actionName === 'Jog_Fwd_Loop' ? 4 : 7), 0.5, 1.6))
+      const ageCadence = currentAge === 'child' ? 1.26 : currentAge === 'adolescent' ? 1.1 : currentAge === 'older' ? 0.9 : 1
+      if (current && ['Walk_Loop', 'Jog_Fwd_Loop', 'Sprint_Loop'].includes(actionName)) {
+        current.setEffectiveTimeScale(THREE.MathUtils.clamp((motion.speed * ageCadence) / (actionName === 'Walk_Loop' ? 1.5 : actionName === 'Jog_Fwd_Loop' ? 4 : 7), 0.5, 1.85))
+      }
       mixer.update(dt)
       secondary.update(dt, motion)
     },

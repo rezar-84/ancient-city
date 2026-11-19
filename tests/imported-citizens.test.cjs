@@ -188,3 +188,42 @@ test('Hellenistic, Roman, and Byzantine garments differentiate cuts, linen/wool 
 
   greek.dispose(); roman.dispose(); byz.dispose()
 })
+
+test('children and adolescents scale head/cadence independently and merchant reach/step poses stay finite', async () => {
+  const { instantiateCitizen, male, motions } = await setup
+  const citizen = instantiateCitizen(male, motions, 'roman', palette())
+  const head = citizen.root.getObjectByName('Head')
+  assert.ok(head, 'citizen skeleton must expose Head bone')
+
+  citizen.configure({ role: 'resident', cut: 'full', fabric: 'linen', age: 'child' })
+  citizen.update(1 / 60, { speed: 0, grounded: true, wave: false, look: 0 })
+  assert.ok(head.scale.x > 1.1, `child head proportion (${head.scale.x}) should be larger than adult`)
+  const childPos = citizen.root.getObjectByName('SimulatedTunic').geometry.getAttribute('position')
+  let childMinY = Infinity
+  for (let i = 0; i < childPos.count; i++) childMinY = Math.min(childMinY, childPos.getY(i))
+
+  citizen.configure({ role: 'resident', cut: 'full', fabric: 'linen', age: 'adult' })
+  citizen.update(1 / 60, { speed: 0, grounded: true, wave: false, look: 0 })
+  assert.equal(head.scale.x, 1)
+  let adultMinY = Infinity
+  for (let i = 0; i < childPos.count; i++) adultMinY = Math.min(adultMinY, childPos.getY(i))
+  assert.ok(childMinY > adultMinY + 0.05, 'child tunic hem must stay shorter than adult full tunic')
+
+  citizen.configure({ role: 'resident', cut: 'full', fabric: 'linen', age: 'adolescent' })
+  assert.ok(head.scale.x > 1.02 && head.scale.x < 1.1)
+
+  // Merchant reaching over a counter + stepping up a 0.22 m step
+  citizen.configure({ role: 'merchant', cut: 'work', fabric: 'linen', age: 'adult' })
+  const armR = citizen.root.getObjectByName('upperarm_r')
+  const restQuat = armR.quaternion.clone()
+  for (let f = 0; f < 25; f++) {
+    citizen.update(1 / 60, { speed: 0, grounded: true, wave: false, look: 0, bend: 0.22, reach: 0.88, groundAt: () => 0 })
+  }
+  assert.ok(armR.quaternion.angleTo(restQuat) > 0.25, 'merchant reach must rotate upperarm_r forward')
+  for (let f = 0; f < 25; f++) {
+    citizen.update(1 / 60, { speed: 1.25, grounded: true, wave: false, look: 0, groundAt: (_x, z) => (z > 0.08 ? 0.22 : 0) })
+  }
+  assert.ok(Array.from(childPos.array).every(Number.isFinite))
+
+  citizen.dispose()
+})

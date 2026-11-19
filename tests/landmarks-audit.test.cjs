@@ -119,6 +119,7 @@ const envReady = Promise.all([
   const { WorldProbe } = loadTs('src/walk/physics.ts')
   const { LANDMARKS } = loadTs('src/content/landmarks.ts')
   const { CHARACTERS } = loadTs('src/content/characters.ts')
+  const { PLAN_VIEW } = loadTs('src/content/plan.ts')
 
   const scene = new THREE.Scene()
   const cityTree = City({ terrain })
@@ -130,7 +131,7 @@ const envReady = Promise.all([
   const probe = new WorldProbe()
   probe.refresh(scene)
 
-  return { THREE, terrain, scene, cityRoot, probe, useApp, runFrames, LANDMARKS, CHARACTERS }
+  return { THREE, terrain, scene, cityRoot, probe, useApp, runFrames, LANDMARKS, CHARACTERS, PLAN_VIEW }
 })
 
 test('all 17 numbered landmarks and 6 playable characters preserve IDs, sources, and 45 scene pieces', async () => {
@@ -146,7 +147,7 @@ test('all 17 numbered landmarks and 6 playable characters preserve IDs, sources,
 })
 
 test('era-specific sanctuary phases and accessible monument interiors hold across 150 BC, AD 200, and AD 500', async () => {
-  const { THREE, terrain, cityRoot, probe, useApp, runFrames, LANDMARKS } = await envReady
+  const { THREE, terrain, cityRoot, probe, useApp, runFrames, LANDMARKS, PLAN_VIEW } = await envReady
   const apolloObj = cityRoot.children.find(o => o.userData.landmark === 'apollo')
   assert.ok(apolloObj && apolloObj.userData.eraPhases)
 
@@ -190,5 +191,11 @@ test('era-specific sanctuary phases and accessible monument interiors hold acros
     const ty = terrain.heightAt(cx, cz)
     const floorY = probe.ground(cx, cz, ty + 6)
     assert.ok(floorY >= ty - 0.15, `${id} interior floor (${floorY}) must not be buried under terrain (${ty})`)
+  }
+
+  // Printable plan view bounds contain all 17 numbered landmarks so plan pins match 3D map pins
+  for (const l of LANDMARKS) {
+    assert.ok(l.lat >= PLAN_VIEW.s && l.lat <= PLAN_VIEW.n, `${l.id} lat outside printable PLAN_VIEW`)
+    assert.ok(l.lon >= PLAN_VIEW.w && l.lon <= PLAN_VIEW.e, `${l.id} lon outside printable PLAN_VIEW`)
   }
 })
