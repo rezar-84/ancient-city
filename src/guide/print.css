@@ -11,14 +11,16 @@
 .poster.a3 { width: 297mm; height: 420mm; }
 .poster.a2 { width: 420mm; height: 594mm; }
 
-.wallmap-sheet { zoom: var(--fit, 1); }
+.wallmap-sheet, .guide .page, .poster { zoom: var(--fit, 1); }
+/* sheets are scaled to the screen; keep the scaled gap between them readable on phones */
+@media screen and (max-width: 640px) { .guide .page, .poster { margin: 6mm auto; } }
 
 @page { size: A4; margin: 0; }
 @media print {
   html, body, #root { height: auto !important; overflow: visible !important; background: #fff !important; }
   .no-print { display: none !important; }
   .guide, .poster-wrap { background: #fff; }
-  .wallmap-sheet { zoom: 1 !important; }
+  .wallmap-sheet, .guide .page, .poster { zoom: 1 !important; }
   .guide .page, .poster { margin: 0; box-shadow: none; page-break-after: always; break-after: page; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }

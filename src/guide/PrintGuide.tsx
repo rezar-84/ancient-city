@@ -14,6 +14,7 @@ import { PhaseMaps, useTerrain } from './WallMap'
 import { hillshadeURL } from './mapData'
 import { LangSwitch } from '../ui/TopBar'
 import type { Landmark } from '../content/types'
+import { useFit } from './useFit'
 import './print.css'
 
 type Lang = 'en' | 'tr'
@@ -45,6 +46,7 @@ export default function PrintGuide() {
   const t = useT()
   const lang = useApp((s) => s.lang)
   useEffect(() => { document.body.classList.add('printing'); return () => document.body.classList.remove('printing') }, [])
+  const fit = useFit(210)
   const terrain = useTerrain()
   const relief = useMemo(() => (terrain ? hillshadeURL(terrain) : null), [terrain])
   const url = window.location.origin
@@ -57,10 +59,10 @@ export default function PrintGuide() {
   const voicePlaces = LANDMARKS.filter((l) => PLACE_SOUND[l.id]?.voice)
 
   return (
-    <div className="guide font-serif text-ink">
-      <div className="no-print sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 bg-ink px-6 py-3 text-travertine">
+    <div className="guide font-serif text-ink" style={{ ['--fit' as string]: fit }}>
+      <div className="no-print sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 bg-ink px-3 py-2 text-sm text-travertine sm:gap-3 sm:px-6 sm:py-3 sm:text-base">
         <a href="#/" className="btn-ghost">← Hierapolis 3D</a>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <a href="#/poster" className="btn-ghost">▭ {tr(lang, 'Posters', 'Posterler')}</a>
           <a href="#/wallmap" className="btn-ghost">▦ {tr(lang, 'A2 wall map', 'A2 duvar haritası')}</a>
           <LangSwitch />

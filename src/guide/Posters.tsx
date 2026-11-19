@@ -6,6 +6,7 @@ import { LANDMARKS } from '../content/landmarks'
 import { ERAS, TIMELINE } from '../content/timeline'
 import { PlanSVG } from './PlanSVG'
 import { LangSwitch } from '../ui/TopBar'
+import { useFit } from './useFit'
 import './print.css'
 
 type Kind = 'overview' | 'plan' | 'timeline'
@@ -20,6 +21,8 @@ export default function Posters() {
   const [kind, setKind] = useState<Kind>('overview')
   const [size, setSize] = useState<Size>('a3')
   const url = window.location.origin
+  const [zoomed, setZoomed] = useState(false)
+  const fit = useFit(size === 'a3' ? 297 : 420, zoomed)
 
   useEffect(() => {
     const st = document.createElement('style')
@@ -43,9 +46,9 @@ export default function Posters() {
   )
 
   return (
-    <div className="poster-wrap font-serif text-ink">
-      <div className="no-print sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 bg-ink px-6 py-3 text-travertine">
-        <div className="flex items-center gap-2">
+    <div className="poster-wrap font-serif text-ink" style={{ ['--fit' as string]: fit }}>
+      <div className="no-print sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 bg-ink px-3 py-2 text-sm text-travertine sm:gap-3 sm:px-6 sm:py-3 sm:text-base">
+        <div className="flex flex-wrap items-center gap-2">
           <a href="#/" className="btn-ghost">← Hierapolis 3D</a>
           <a href="#/guide" className="btn-ghost">⎙ {t('guide')}</a>
           <a href="#/wallmap" className="btn-ghost">▦ {tr(lang, 'A2 wall map', 'A2 duvar haritası')}</a>
@@ -58,6 +61,7 @@ export default function Posters() {
           ))}
           <span className="mx-1 opacity-40">|</span>
           {(['a3', 'a2'] as Size[]).map((s) => <button key={s} className={size === s ? 'btn-active' : 'btn-ghost'} onClick={() => setSize(s)}>{s.toUpperCase()}</button>)}
+          <button className={'sm:hidden ' + (zoomed ? 'btn-active' : 'btn-ghost')} aria-pressed={zoomed} onClick={() => setZoomed((z) => !z)}>{zoomed ? tr(lang, '⤡ Fit', '⤡ Sığdır') : tr(lang, '⤢ Zoom', '⤢ Yakınlaştır')}</button>
           <LangSwitch />
           <button className="btn-gold" onClick={() => window.print()}>⎙ PDF</button>
         </div>

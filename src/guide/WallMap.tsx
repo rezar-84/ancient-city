@@ -10,6 +10,7 @@ import type { Landmark } from '../content/types'
 import { LAYERS, MapFurniture, MapLayers, PALETTE, type LayerId, type Theme, type Underlay } from './MapLayers'
 import { NATURE, PHRYGIAN, contourPaths, eraOf, hillshadeURL, lead, loadTerrainGrid, makeProjector, markerColor, shortLabel, standing, timeX, type Rect, type TerrainGrid } from './mapData'
 import { WallMapBack } from './WallMapBack'
+import { useFit } from './useFit'
 import './print.css'
 
 type Orient = 'portrait' | 'landscape'
@@ -19,7 +20,6 @@ const tr = (lang: Lang, en: string, t: string) => (lang === 'en' ? en : t)
 const BOUNDS = { s: PLAN_VIEW.s, n: PLAN_VIEW.n, w: PLAN_VIEW.w, e: PLAN_VIEW.e }
 /** satellite and terrain coverage (terrain/meta.json): the frame is kept inside it */
 const IMAGERY = { s: 37.91, n: 37.94, w: 29.105, e: 29.143 }
-const MM = 96 / 25.4 // CSS px per mm
 
 interface Layout {
   W: number; H: number
@@ -98,10 +98,11 @@ export default function WallMap() {
   const [layers, setLayers] = useState<Set<LayerId>>(() => new Set(DEFAULT_LAYERS))
   const [hot, setHot] = useState<string | null>(null)
   const [back, setBack] = useState(true)
-  const [fit, setFit] = useState(1)
   const terrain = useTerrain()
   const L = LAYOUTS[orient]
   const C = PALETTE[theme]
+  const [zoomed, setZoomed] = useState(false)
+  const fit = useFit(L.W, zoomed)
   const url = window.location.origin
 
   useEffect(() => {
@@ -111,12 +112,6 @@ export default function WallMap() {
     document.body.classList.add('printing')
     return () => { st.remove(); document.body.classList.remove('printing') }
   }, [orient])
-
-  useEffect(() => {
-    const on = () => setFit(Math.min(1, (window.innerWidth - 32) / (L.W * MM)))
-    on(); window.addEventListener('resize', on)
-    return () => window.removeEventListener('resize', on)
-  }, [L.W])
 
   const proj = useMemo(() => makeProjector(BOUNDS, L.map, 250, IMAGERY), [L])
   const relief = useMemo(() => (terrain ? hillshadeURL(terrain, theme === 'night') : null), [terrain, theme])
@@ -130,7 +125,7 @@ export default function WallMap() {
 
   return (
     <div className="poster-wrap font-serif">
-      <div className="no-print sticky top-0 z-10 flex flex-col gap-2 bg-ink px-4 py-3 text-travertine">
+      <div className="no-print z-10 flex flex-col gap-2 bg-ink px-3 py-2 text-travertine sm:sticky sm:top-0 sm:px-4 sm:py-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
             <a href="#/" className="btn-ghost">← Hierapolis 3D</a>
@@ -143,15 +138,16 @@ export default function WallMap() {
             <Seg value={underlay} set={setUnderlay} opts={[['ancient', tr(lang, 'Landscape', 'Arazi')], ['today', tr(lang, 'Today', 'Bugün')]]} />
             <Seg value={mode} set={setMode} opts={[['poster', tr(lang, 'Poster', 'Poster')], ['sheets', tr(lang, 'One sheet per layer', 'Her katman ayrı sayfa')]]} />
             {mode === 'poster' && <button aria-pressed={back} className={back ? 'btn-active' : 'btn-ghost'} onClick={() => setBack((b) => !b)} title={tr(lang, 'Second sheet: monuments in detail, chronology, glossary and resources', 'İkinci sayfa: ayrıntılı anıtlar, kronoloji, sözlük ve kaynaklar')}>{tr(lang, '+ Sheet 2: details', '+ Sayfa 2: ayrıntılar')}</button>}
+<button className={'sm:hidden ' + (zoomed ? 'btn-active' : 'btn-ghost')} aria-pressed={zoomed} onClick={() => setZoomed((z) => !z)}>{zoomed ? tr(lang, '⤡ Fit', '⤡ Sığdır') : tr(lang, '⤢ Zoom', '⤢ Yakınlaştır')}</button>
             <LangSwitch />
             <button className="btn-gold" onClick={() => window.print()} disabled={!terrain}>⎙ PDF</button>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-1.5 text-xs" role="group" aria-label={tr(lang, 'Map layers', 'Harita katmanları')}>
-          <span className="mr-1 opacity-60">{tr(lang, 'Layers', 'Katmanlar')}:</span>
+        <div className="-mx-3 flex items-center gap-1.5 overflow-x-auto px-3 pb-1 text-xs sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0" role="group" aria-label={tr(lang, 'Map layers', 'Harita katmanları')}>
+          <span className="mr-1 shrink-0 opacity-60">{tr(lang, 'Layers', 'Katmanlar')}:</span>
           {LAYERS.map((x) => (
             <button key={x.id} aria-pressed={layers.has(x.id)} title={x.note[lang]} onClick={() => toggle(x.id)}
-              className={'rounded-full border px-2.5 py-1 ' + (layers.has(x.id) ? 'border-gold bg-gold/80 text-ink' : 'border-white/25 text-travertine/70')}>
+              className={'shrink-0 whitespace-nowrap rounded-full border px-2.5 py-1 ' + (layers.has(x.id) ? 'border-gold bg-gold/80 text-ink' : 'border-white/25 text-travertine/70')}>
               {x[lang]}
             </button>
           ))}
