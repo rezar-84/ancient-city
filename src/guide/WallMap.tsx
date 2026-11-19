@@ -9,6 +9,7 @@ import { LangSwitch } from '../ui/TopBar'
 import type { Landmark } from '../content/types'
 import { LAYERS, MapFurniture, MapLayers, PALETTE, type LayerId, type Theme, type Underlay } from './MapLayers'
 import { NATURE, PHRYGIAN, contourPaths, eraOf, hillshadeURL, lead, loadTerrainGrid, makeProjector, markerColor, shortLabel, standing, timeX, type Rect, type TerrainGrid } from './mapData'
+import { WallMapBack } from './WallMapBack'
 import './print.css'
 
 type Orient = 'portrait' | 'landscape'
@@ -96,6 +97,7 @@ export default function WallMap() {
   const [mode, setMode] = useState<Mode>('poster')
   const [layers, setLayers] = useState<Set<LayerId>>(() => new Set(DEFAULT_LAYERS))
   const [hot, setHot] = useState<string | null>(null)
+  const [back, setBack] = useState(true)
   const [fit, setFit] = useState(1)
   const terrain = useTerrain()
   const L = LAYOUTS[orient]
@@ -140,6 +142,7 @@ export default function WallMap() {
             <Seg value={theme} set={setTheme} opts={[['parchment', tr(lang, 'Parchment', 'Parşömen')], ['night', tr(lang, 'Night (wallpaper)', 'Gece (duvar kâğıdı)')]]} />
             <Seg value={underlay} set={setUnderlay} opts={[['ancient', tr(lang, 'Landscape', 'Arazi')], ['today', tr(lang, 'Today', 'Bugün')]]} />
             <Seg value={mode} set={setMode} opts={[['poster', tr(lang, 'Poster', 'Poster')], ['sheets', tr(lang, 'One sheet per layer', 'Her katman ayrı sayfa')]]} />
+            {mode === 'poster' && <button aria-pressed={back} className={back ? 'btn-active' : 'btn-ghost'} onClick={() => setBack((b) => !b)} title={tr(lang, 'Second sheet: monuments in detail, chronology, glossary and resources', 'İkinci sayfa: ayrıntılı anıtlar, kronoloji, sözlük ve kaynaklar')}>{tr(lang, '+ Sheet 2: details', '+ Sayfa 2: ayrıntılar')}</button>}
             <LangSwitch />
             <button className="btn-gold" onClick={() => window.print()} disabled={!terrain}>⎙ PDF</button>
           </div>
@@ -268,6 +271,8 @@ export default function WallMap() {
           </footer>
         </div>
       )}
+
+      {mode === 'poster' && back && <WallMapBack orient={orient} theme={theme} lang={lang} style={sheetStyle} />}
 
       {mode === 'sheets' && active.map((x, n) => (
         <div key={x.id} className="wallmap-sheet poster relative overflow-hidden" style={{ ...sheetStyle, background: '#fff', color: '#2b2118' }}>
