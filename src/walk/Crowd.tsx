@@ -4,7 +4,7 @@ import * as THREE from 'three'
 import type { Terrain } from '../scene/terrainData'
 import { GRID } from '../content/grid'
 import { LANDMARKS } from '../content/landmarks'
-import { solidMonumentAt } from '../scene/footprints'
+import { MONUMENT_FOOTPRINTS, solidMonumentAt } from '../scene/footprints'
 import { CHARACTERS } from '../content/characters'
 import { useApp, walkInputBlocked } from '../store'
 import {
@@ -15,22 +15,41 @@ import { gridFrame, stallSpots } from './spots'
 import { walk } from './WalkControls'
 import { sharedWorldProbe } from './physics'
 import {
-  createRiggedCitizen, loadCitizenAssets,
-  type AgeGroup, type CitizenRole, type FabricKind, type GarmentCut,
+  CITIZEN_DETAIL, createMeshoptGLTFLoader, createRiggedCitizen, loadCitizenAssets,
+  type AgeGroup, type CitizenDetail, type CitizenRole, type FabricKind, type GarmentCut,
 } from './riggedCitizen'
-import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js'
-import { cartPose } from './cartRoute'
+import { cartPose, type CartPose } from './cartRoute'
 import { MarketSheep } from './MarketSheep'
 
 type Variant = 'greek' | 'roman' | 'byzantine'
 type PropKind = 'amphora' | 'basket' | 'staff' | 'scroll'
 const variantFor = (year: number): Variant => (year < -133 ? 'greek' : year < 330 ? 'roman' : 'byzantine')
+/** Everything the spawn memo reads from the year: the era variant plus which landmarks/footprints stand.
+ * Scrubbing the year inside one such epoch keeps the same crowd instead of rebuilding every rig. */
+function spawnEpoch(year: number) {
+  let key = variantFor(year)
+  for (const l of LANDMARKS) if (year >= l.built && (l.until === undefined || year <= l.until)) key += `|${l.id}`
+  key += '#'
+  for (const f of MONUMENT_FOOTPRINTS) if (year >= f.built && (f.until === undefined || year <= f.until)) key += `|${f.id}`
+  return key
+}
+/** Rigs beyond this camera distance animate with the skinned hem only (no foot IK / cloth). */
+const RIG_FULL_DETAIL_R2 = 25 * 25
+/** Foot IK raycasts against the world only near the walker; further out the terrain plus the cached root support is used. */
+const FOOT_PROBE_R2 = 15 * 15
+/** Flag a whole-buffer prefix for upload instead of the full attribute. */
+function flagPrefix(attr: THREE.BufferAttribute, count: number) {
+  attr.clearUpdateRanges()
+  attr.addUpdateRange(0, count * attr.itemSize)
+  attr.needsUpdate = true
+}
 
 let horseAssetPromise: Promise<GLTF> | null = null
 function loadHorseAsset() {
   if (!horseAssetPromise) {
-    horseAssetPromise = new GLTFLoader().loadAsync('/models/animals/cart-horse.glb')
+    horseAssetPromise = createMeshoptGLTFLoader().loadAsync('/models/animals/cart-horse.glb')
       .catch(error => { horseAssetPromise = null; throw error })
   }
   return horseAssetPromise
@@ -58,9 +77,9 @@ interface Npc {
   side: number; phase: number; pose: number; look: number
 }
 
-/** live NPC positions for barks (x, z, yaw, voice) */
-export const NPC_STATE: { x: Float32Array; z: Float32Array; count: number; female: Uint8Array } = {
-  x: new Float32Array(0), z: new Float32Array(0), count: 0, female: new Uint8Array(0),
+/** live NPC positions for barks (x, z, yaw, voice); guard = 1 for stationed soldiers (they bark in Latin under Rome) */
+export const NPC_STATE: { x: Float32Array; z: Float32Array; count: number; female: Uint8Array; guard: Uint8Array } = {
+  x: new Float32Array(0), z: new Float32Array(0), count: 0, female: new Uint8Array(0), guard: new Uint8Array(0),
 }
 
 function roleBodyMetrics(role: CitizenRole, age: AgeGroup, female: boolean, rand: () => number) {
@@ -185,6 +204,7 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
   const year = useApp((s) => s.year)
   const character = useApp((s) => s.character)
   const variant: Variant = mode === 'walk' || mode === 'plan' ? variantFor(year) : 'roman'
+  const crowdEpoch = mode === 'walk' ? spawnEpoch(year) : ''
   const visible = era === 'ancient' && (mode === 'walk' || (mode === 'explore' && showGrid) || mode === 'tour')
 
   useEffect(() => {
@@ -571,6 +591,7 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
     const cacheEntities = npcs.length + 1 + nCarts * 2
     groundCache.current = new Float64Array(cacheEntities * 3).fill(NaN)
     NPC_STATE.x = new Float32Array(npcs.length); NPC_STATE.z = new Float32Array(npcs.length); NPC_STATE.count = npcs.length; NPC_STATE.female = female
+    NPC_STATE.guard = Uint8Array.from(npcs, (n) => (n.kind === 'guard' ? 1 : 0))
 
     return {
       F, originX, originZ, ux, uz, vx, vz,
@@ -579,9 +600,12 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
       npcTint0, npcTint1, npcTint2, npcStyle, horseTints,
       avatar, closePeople, mats: [pMat, hMat, cMat, ...depthMats],
       bestIds: new Int32Array(Math.max(poolSize, 18)), bestD2: new Float64Array(Math.max(poolSize, 18)),
+      // Which source NPC/cart last wrote each instance slot: static tints are rewritten and uploaded only when it changes.
+      nearSrc: new Int32Array(nearCap).fill(-1), farSrc: new Int32Array(farCap).fill(-1), horseSrc: new Int32Array(nCarts).fill(-1),
     }
+    // year only matters through crowdEpoch (variant + standing landmarks/footprints)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [terrain, variant, character, citizenAssets, mode === 'walk' ? year : 0])
+  }, [terrain, variant, character, citizenAssets, crowdEpoch])
 
   useEffect(() => () => {
     sim.nearPeople.geometry.dispose(); sim.nearPeople.dispose()
@@ -597,6 +621,9 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
     const y = terrain.heightAt(x, z)
     return Math.max(y, probe.ground(x, z, y + 2.5))
   }
+  // Cheap foot support for rigs beyond FOOT_PROBE_R2: terrain, or the cached support under the rig's root.
+  const farFoot = useRef(0)
+  const footGroundFar = (x: number, z: number) => Math.max(terrain.heightAt(x, z), farFoot.current)
 
   const m4 = useMemo(() => new THREE.Matrix4(), [])
   const q = useMemo(() => new THREE.Quaternion(), [])
@@ -609,7 +636,37 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
   const tmpSkin = useMemo(() => new THREE.Color(), [])
   const tmpAccent = useMemo(() => new THREE.Color(), [])
   const propCounts = useMemo(() => new Int32Array(4), [])
+  const frustum = useMemo(() => new THREE.Frustum(), [])
+  const projScreen = useMemo(() => new THREE.Matrix4(), [])
+  const rigSphere = useMemo(() => new THREE.Sphere(), [])
+  const leadPose = useMemo<CartPose>(() => ({ u: 0, v: 0, heading: 0 }), [])
+  const axlePose = useMemo<CartPose>(() => ({ u: 0, v: 0, heading: 0 }), [])
   const clock = useRef(0)
+  const dirty = useRef({ near: false, far: false })
+
+  /** Writes one LOD instance; tint/style only when the slot changes owner (they are static per NPC). */
+  const writePersonSlot = useMemo(() => {
+    const { npcTint0, npcTint1, npcTint2, npcStyle, nearPeople, nearSrc, farSrc } = sim
+    return (
+      mesh: THREE.InstancedMesh, attr: ReturnType<typeof createCrowdAttributes>,
+      slot: number, srcIdx: number, phase: number, gait: number, activePose: number, clampedLook: number,
+    ) => {
+      mesh.setMatrixAt(slot, m4)
+      const near = mesh === nearPeople
+      const owners = near ? nearSrc : farSrc
+      if (owners[slot] !== srcIdx) {
+        owners[slot] = srcIdx
+        const t3 = srcIdx * 3, s4 = srcIdx * 4
+        attr.tint0.setXYZ(slot, npcTint0[t3], npcTint0[t3 + 1], npcTint0[t3 + 2])
+        attr.tint1.setXYZ(slot, npcTint1[t3], npcTint1[t3 + 1], npcTint1[t3 + 2])
+        attr.tint2.setXYZ(slot, npcTint2[t3], npcTint2[t3 + 1], npcTint2[t3 + 2])
+        attr.style.setXYZW(slot, npcStyle[s4], npcStyle[s4 + 1], npcStyle[s4 + 2], npcStyle[s4 + 3])
+        if (near) dirty.current.near = true; else dirty.current.far = true
+      }
+      attr.anim.setXYZW(slot, phase, gait, activePose, clampedLook)
+      attr.pose.setXY(slot, activePose, 1)
+    }
+  }, [sim, m4])
 
   useFrame(({ camera }, rawDt) => {
     if (!visible) return
@@ -621,8 +678,8 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
       F, originX, originZ, ux, uz, vx, vz,
       npcs, carts, nearPeople, farPeople, horses, cartMesh, propMeshes,
       nearAttr, farAttr, hAttr, cAttr,
-      npcTint0, npcTint1, npcTint2, npcStyle, horseTints,
-      mats, bestIds, bestD2,
+      npcTint0, npcTint1, npcTint2, horseTints,
+      mats, bestIds, bestD2, horseSrc,
     } = sim
     for (const m of mats) (m.userData.uTime as { value: number }).value = clock.current
     const walking = mode === 'walk'
@@ -686,19 +743,10 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
     let nearCount = 0, farCount = 0
     propCounts.fill(0)
 
-    const writePersonSlot = (
-      mesh: THREE.InstancedMesh, attr: ReturnType<typeof createCrowdAttributes>,
-      slot: number, srcIdx: number, phase: number, gait: number, activePose: number, clampedLook: number,
-    ) => {
-      mesh.setMatrixAt(slot, m4)
-      const t3 = srcIdx * 3, s4 = srcIdx * 4
-      attr.tint0.setXYZ(slot, npcTint0[t3], npcTint0[t3 + 1], npcTint0[t3 + 2])
-      attr.tint1.setXYZ(slot, npcTint1[t3], npcTint1[t3 + 1], npcTint1[t3 + 2])
-      attr.tint2.setXYZ(slot, npcTint2[t3], npcTint2[t3 + 1], npcTint2[t3 + 2])
-      attr.style.setXYZW(slot, npcStyle[s4], npcStyle[s4 + 1], npcStyle[s4 + 2], npcStyle[s4 + 3])
-      attr.anim.setXYZW(slot, phase, gait, activePose, clampedLook)
-      attr.pose.setXY(slot, activePose, 1)
-    }
+    // Frustum from the last rendered camera; generous per-rig spheres absorb the one-frame lag.
+    projScreen.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
+    frustum.setFromProjectionMatrix(projScreen)
+    const camX = camera.position.x, camY = camera.position.y, camZ = camera.position.z
 
     for (let i = 0; i < npcs.length; i++) {
       const n = npcs[i]
@@ -767,6 +815,13 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
           const prayBow = isPraying ? (Math.sin(clock.current * 0.55 + n.phase) * 0.5 + 0.5) * 0.34 : 0
           const talkPulse = isTalking && Math.sin(clock.current * 0.65 + n.phase * 1.7) > 0.78
           const guardLook = isGuard ? Math.sin(clock.current * 0.45 + n.phase) * 0.55 : n.look
+          rigSphere.center.set(pos.x, pos.y + 0.95 * n.stature, pos.z)
+          rigSphere.radius = 1.75 * Math.max(n.stature, n.build)
+          const cdx = pos.x - camX, cdy = rigSphere.center.y - camY, cdz = pos.z - camZ
+          const detail: CitizenDetail = !frustum.intersectsSphere(rigSphere) ? CITIZEN_DETAIL.offscreen
+            : cdx * cdx + cdy * cdy + cdz * cdz > RIG_FULL_DETAIL_R2 ? CITIZEN_DETAIL.animated : CITIZEN_DETAIL.full
+          const probeFeet = dist2 <= FOOT_PROBE_R2
+          if (!probeFeet) farFoot.current = pos.y - 0.015
           slot.citizen.update(dt, {
             speed: gait ? n.speed : 0,
             grounded: true,
@@ -774,8 +829,8 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
             look: guardLook,
             bend: isMerchantStall ? merchantReach * 0.24 : prayBow,
             reach: merchantReach,
-            groundAt: footGround,
-          })
+            groundAt: probeFeet ? footGround : footGroundFar,
+          }, detail)
           handledByClose = true
           break
         }
@@ -819,24 +874,24 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
 
     nearPeople.count = nearCount
     farPeople.count = farCount
-    if (nearCount > 0) {
-      nearPeople.instanceMatrix.needsUpdate = true
-      nearAttr.tint0.needsUpdate = true; nearAttr.tint1.needsUpdate = true; nearAttr.tint2.needsUpdate = true
-      nearAttr.style.needsUpdate = true; nearAttr.anim.needsUpdate = true; nearAttr.pose.needsUpdate = true
-    }
-    if (farCount > 0) {
-      farPeople.instanceMatrix.needsUpdate = true
-      farAttr.tint0.needsUpdate = true; farAttr.tint1.needsUpdate = true; farAttr.tint2.needsUpdate = true
-      farAttr.style.needsUpdate = true; farAttr.anim.needsUpdate = true; farAttr.pose.needsUpdate = true
+    // Upload only the live prefix; static tint/style buffers only when a slot changed owner.
+    const lods = [[nearPeople, nearAttr, nearCount, 'near'], [farPeople, farAttr, farCount, 'far']] as const
+    for (const [mesh, attr, count, key] of lods) {
+      if (count === 0) continue
+      flagPrefix(mesh.instanceMatrix, count); flagPrefix(attr.anim, count); flagPrefix(attr.pose, count)
+      if (dirty.current[key]) {
+        flagPrefix(attr.tint0, count); flagPrefix(attr.tint1, count); flagPrefix(attr.tint2, count); flagPrefix(attr.style, count)
+        dirty.current[key] = false
+      }
     }
     for (let pIdx = 0; pIdx < 4; pIdx++) {
       const pm = propMeshes[pIdx]
       const cnt = propCounts[pIdx]
       pm.mesh.count = cnt
       if (cnt > 0) {
-        pm.mesh.instanceMatrix.needsUpdate = true
-        pm.attr.anim.needsUpdate = true
-        pm.attr.pose.needsUpdate = true
+        flagPrefix(pm.mesh.instanceMatrix, cnt)
+        flagPrefix(pm.attr.anim, cnt)
+        flagPrefix(pm.attr.pose, cnt)
       }
     }
 
@@ -845,24 +900,24 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
     if (horse && walking) {
       horse.root.visible = false
       for (let i = 0; i < carts.length; i++) {
-        const pose = cartPose(carts[i].distance, F.L)
+        const pose = cartPose(carts[i].distance, F.L, leadPose)
         const x = originX + ux * pose.u + vx * pose.v
         const z = originZ + uz * pose.u + vz * pose.v
         const distance = (x - px) ** 2 + (z - pz) ** 2
         if (distance < nearestDistance) { nearestCart = i; nearestDistance = distance }
       }
     }
-    let horseCount = 0, cartCount = 0
+    let horseCount = 0, cartCount = 0, horseTintDirty = false
     for (let i = 0; i < carts.length; i++) {
       const cr = carts[i]
       cr.distance += cr.speed * dt
-      const lead = cartPose(cr.distance, F.L)
+      const lead = cartPose(cr.distance, F.L, leadPose)
       const x = originX + ux * lead.u + vx * lead.v
       const z = originZ + uz * lead.u + vz * lead.v
       const cdx = x - refX, cdz = z - refZ
       if (walking && cdx * cdx + cdz * cdz > CART_MAX_R2) continue
       const horseY = surfaceY(x, z, npcs.length + 1 + i * 2)
-      const axle = cartPose(cr.distance - 2.6, F.L)
+      const axle = cartPose(cr.distance - 2.6, F.L, axlePose)
       const cx = originX + ux * axle.u + vx * axle.v
       const cz = originZ + uz * axle.u + vz * axle.v
       const cartY = surfaceY(cx, cz, npcs.length + 2 + i * 2)
@@ -880,7 +935,10 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
       } else {
         m4.compose(pos, q, one)
         horses.setMatrixAt(horseCount, m4)
-        hAttr.tint0.setXYZ(horseCount, horseTints[i * 3], horseTints[i * 3 + 1], horseTints[i * 3 + 2])
+        if (horseSrc[horseCount] !== i) {
+          horseSrc[horseCount] = i; horseTintDirty = true
+          hAttr.tint0.setXYZ(horseCount, horseTints[i * 3], horseTints[i * 3 + 1], horseTints[i * 3 + 2])
+        }
         hAttr.anim.setXYZW(horseCount, cr.phase, 0.5, 0, 0)
         horseCount++
       }
@@ -894,13 +952,13 @@ export function Crowd({ terrain }: { terrain: Terrain }) {
     horses.count = horseCount
     cartMesh.count = cartCount
     if (horseCount > 0) {
-      horses.instanceMatrix.needsUpdate = true
-      hAttr.tint0.needsUpdate = true
-      hAttr.anim.needsUpdate = true
+      flagPrefix(horses.instanceMatrix, horseCount)
+      flagPrefix(hAttr.anim, horseCount)
+      if (horseTintDirty) flagPrefix(hAttr.tint0, horseCount)
     }
     if (cartCount > 0) {
-      cartMesh.instanceMatrix.needsUpdate = true
-      cAttr.anim.needsUpdate = true
+      flagPrefix(cartMesh.instanceMatrix, cartCount)
+      flagPrefix(cAttr.anim, cartCount)
     }
   })
 

@@ -2,12 +2,13 @@
  * Place soundscapes. Beds are ElevenLabs sound-generation loops; voices are ElevenLabs TTS of
  * ancient texts (rendered by scripts/sfx_elevenlabs.ts into public/audio/sfx and public/audio/voices).
  *
- * Language rule (as requested for the presentation): Hellenistic → Greek, Roman → Latin,
- * Byzantine → (Byzantine) Greek. Historically, Hierapolis stayed Greek-speaking under Rome; Latin
- * was the language of the emperor's administration and of some official inscriptions.
+ * Language rule: Hellenistic → Greek, Roman → Koine Greek, Byzantine → (Byzantine) Greek.
+ * Hierapolis stayed Greek-speaking under Rome; Latin was the language of the emperor's
+ * administration, the army and some official inscriptions (e.g. the bilingual Frontinus Gate
+ * dedication), so in the Roman era Latin is heard only at the gate and from soldiers on guard.
  * Pronunciation is the TTS voice's approximation, not a reconstruction of ancient phonology.
  */
-export type Lang3 = 'grc' | 'la' | 'byz'
+export type Lang3 = 'grc' | 'koi' | 'la' | 'byz'
 
 export interface Bed { id: string; prompt: string; seconds: number; loop: boolean }
 export interface VoiceLine { id: string; lang: Lang3; text: string; voice: 'priest' | 'herald'; source: string; gloss: { en: string; tr: string } }
@@ -105,33 +106,35 @@ export const VOICES: VoiceLine[] = [
 /** Place → bed and voice per language era. */
 export const PLACE_SOUND: Record<string, { bed: string; voice?: Partial<Record<Lang3, string>> }> = {
   travertines: { bed: 'spring' },
-  'frontinus-gate': { bed: 'gate', voice: { la: 'gate-la' } },
-  'frontinus-street': { bed: 'street', voice: { grc: 'market-grc', la: 'market-la' } },
+  'frontinus-gate': { bed: 'gate', voice: { la: 'gate-la', koi: 'gate-la' } },
+  'frontinus-street': { bed: 'street', voice: { grc: 'market-grc', koi: 'market-grc', la: 'market-la' } },
   necropolis: { bed: 'necropolis-wind' },
   latrine: { bed: 'latrine' },
-  agora: { bed: 'market', voice: { grc: 'market-grc', la: 'market-la' } },
+  agora: { bed: 'market', voice: { grc: 'market-grc', koi: 'market-grc', la: 'market-la' } },
   'byzantine-gate-n': { bed: 'gate' },
   tritons: { bed: 'fountain' },
   baths: { bed: 'baths' },
   cathedral: { bed: 'church', voice: { byz: 'church-byz' } },
   'antique-pool': { bed: 'spring' },
-  apollo: { bed: 'temple', voice: { grc: 'apollo-grc', la: 'apollo-la' } },
-  ploutonion: { bed: 'ploutonion', voice: { grc: 'ploutonion-grc', la: 'ploutonion-la' } },
-  theatre: { bed: 'theatre', voice: { grc: 'theatre-grc', la: 'theatre-la' } },
+  apollo: { bed: 'temple', voice: { grc: 'apollo-grc', koi: 'apollo-grc', la: 'apollo-la' } },
+  ploutonion: { bed: 'ploutonion', voice: { grc: 'ploutonion-grc', koi: 'ploutonion-grc', la: 'ploutonion-la' } },
+  theatre: { bed: 'theatre', voice: { grc: 'theatre-grc', koi: 'theatre-grc', la: 'theatre-la' } },
   martyrium: { bed: 'church', voice: { byz: 'church-byz' } },
   'philip-church': { bed: 'church', voice: { byz: 'church-byz' } },
   'south-gate': { bed: 'gate' },
 }
 
-/** Year → language era (Rome takes over Asia in 133 BC; Constantinople founded AD 330). */
+/** Year → language era (Rome takes over Asia in 133 BC; Constantinople founded AD 330).
+ *  The Roman era is Koine Greek: the city kept speaking Greek; Latin is chosen per speaker (soldiers). */
 export function langForYear(year: number): Lang3 {
   if (year < -133) return 'grc'
-  if (year < 330) return 'la'
+  if (year < 330) return 'koi'
   return 'byz'
 }
 
 export const LANG_LABEL: Record<Lang3, { en: string; tr: string }> = {
   grc: { en: 'Ancient Greek', tr: 'Antik Yunanca' },
+  koi: { en: 'Koine Greek', tr: 'Koine Yunancası' },
   la: { en: 'Latin', tr: 'Latince' },
   byz: { en: 'Byzantine Greek', tr: 'Bizans Yunancası' },
 }

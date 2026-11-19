@@ -1,11 +1,17 @@
 /** Render playable character intros and landmark reflections (src/content/characters.ts) with ElevenLabs TTS
  *  → public/audio/characters/<id>-intro-<lang>.mp3 and <id>-<landmark>-<lang>.mp3
- *  Run: npx -y tsx@4.19.2 --env-file=.env.local scripts/characters_elevenlabs.ts */
+ *  Skips files that already exist unless --force. --only=<prefix,...> limits rendering to clips whose key
+ *  (<id>-intro or <id>-<landmark>) starts with one of the prefixes, e.g. --only=theano-intro,aurelia-theatre
+ *  Run: npx -y tsx@4.19.2 --env-file=.env.local scripts/characters_elevenlabs.ts [--only=prefix,prefix] [--force] */
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { CHARACTERS } from '../src/content/characters.ts'
 
 const KEY = process.env.ELEVENLABS_API_KEY
 if (!KEY) throw new Error('ELEVENLABS_API_KEY missing')
+
+const force = process.argv.includes('--force')
+const only = process.argv.find((a) => a.startsWith('--only='))?.slice(7).split(',').filter(Boolean)
+const wanted = (key: string) => !only || only.some((p) => key.startsWith(p))
 
 mkdirSync('public/audio/characters', { recursive: true })
 
@@ -20,7 +26,7 @@ const VOICE_FOR: Record<string, { id: string; speed: number; stability: number; 
 }
 
 async function render(file: string, text: string, lang: 'en' | 'tr', v: { id: string; speed: number; stability: number; style: number }) {
-  if (existsSync(file)) return 'skip'
+  if (existsSync(file) && !force) return 'skip'
   const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${v.id}?output_format=mp3_44100_64`, {
     method: 'POST',
     headers: { 'xi-api-key': KEY!, 'content-type': 'application/json', accept: 'audio/mpeg' },
@@ -46,12 +52,12 @@ for (const c of CHARACTERS) {
   for (const lang of ['en', 'tr'] as const) {
     // 1) Character intro + backstory + daily objective
     const introText = `${c.greeting.gloss[lang]} ${c.backstory[lang]}`
-    const r1 = await render(`public/audio/characters/${c.id}-intro-${lang}.mp3`, introText, lang, v)
+    const r1 = !wanted(`${c.id}-intro`) ? 'skip' : await render(`public/audio/characters/${c.id}-intro-${lang}.mp3`, introText, lang, v)
     if (r1 === 'ok') ok++; else if (r1 === 'skip') skipped++; else failed++
 
     // 2) In-character landmark reflections
     for (const [lmId, text] of Object.entries(c.reflections)) {
-      const r2 = await render(`public/audio/characters/${c.id}-${lmId}-${lang}.mp3`, text[lang], lang, v)
+      const r2 = !wanted(`${c.id}-${lmId}`) ? 'skip' : await render(`public/audio/characters/${c.id}-${lmId}-${lang}.mp3`, text[lang], lang, v)
       if (r2 === 'ok') ok++; else if (r2 === 'skip') skipped++; else failed++
     }
   }

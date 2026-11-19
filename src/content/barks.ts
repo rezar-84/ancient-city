@@ -1,7 +1,8 @@
 import type { Lang3 } from './soundscapes'
 
 /** Short lines townspeople say when you pass close in walk mode. Rendered by
- *  scripts/barks_elevenlabs.ts into public/audio/barks/<id>.mp3. Pronunciation is approximate. */
+ *  scripts/barks_elevenlabs.ts into public/audio/barks/<id>.mp3. Pronunciation is approximate.
+ *  Roman era: townspeople speak Koine Greek ('koi'); Latin ('la') is reserved for soldiers on guard. */
 export interface Bark { id: string; lang: Lang3; text: string; gender: 'm' | 'f' | 'any'; gloss: { en: string; tr: string } }
 
 export const BARKS: Bark[] = [
@@ -14,14 +15,20 @@ export const BARKS: Bark[] = [
   { id: 'grc-6', lang: 'grc', gender: 'm', text: 'Θερμὸν τὸ ὕδωρ σήμερον.', gloss: { en: 'The water is warm today.', tr: 'Su bugün sıcak.' } },
   { id: 'grc-7', lang: 'grc', gender: 'f', text: 'Ὠνεῖσθε ἔρια καλά!', gloss: { en: 'Buy fine wool!', tr: 'Güzel yün alın!' } },
   { id: 'grc-8', lang: 'grc', gender: 'm', text: 'Πρὸς τὸ ἱερὸν τοῦ Ἀπόλλωνος βαδίζω.', gloss: { en: 'I am going to the sanctuary of Apollo.', tr: 'Apollon’un kutsal alanına gidiyorum.' } },
-  // Latin (Roman)
-  { id: 'la-1', lang: 'la', gender: 'any', text: 'Salve!', gloss: { en: 'Hello!', tr: 'Merhaba!' } },
+  // Koine Greek (Roman era): Hierapolis stayed Greek-speaking under Rome, so townspeople use Greek
+  { id: 'koi-1', lang: 'koi', gender: 'any', text: 'Χαῖρε, φίλε!', gloss: { en: 'Hello, friend!', tr: 'Merhaba, dostum!' } },
+  { id: 'koi-2', lang: 'koi', gender: 'm', text: 'Πόθεν ἔρχῃ;', gloss: { en: 'Where are you coming from?', tr: 'Nereden geliyorsun?' } },
+  { id: 'koi-3', lang: 'koi', gender: 'f', text: 'Εἰς τὸ βαλανεῖον ὑπάγω.', gloss: { en: 'I am off to the baths.', tr: 'Hamama gidiyorum.' } },
+  { id: 'koi-4', lang: 'koi', gender: 'm', text: 'Πρόσεχε! Δὸς τόπον.', gloss: { en: 'Watch out! Make way.', tr: 'Dikkat! Yol ver.' } },
+  { id: 'koi-5', lang: 'koi', gender: 'f', text: 'Ἀγοράσατε ἔρια πορφυρᾶ!', gloss: { en: 'Buy purple wool!', tr: 'Mor yün alın!' } },
+  { id: 'koi-6', lang: 'koi', gender: 'm', text: 'Τί καινόν;', gloss: { en: 'What’s new?', tr: 'Ne var ne yok?' } },
+  { id: 'koi-7', lang: 'koi', gender: 'f', text: 'Οἱ θεοὶ φυλάσσοιέν σε.', gloss: { en: 'May the gods protect you.', tr: 'Tanrılar seni korusun.' } },
+  { id: 'koi-8', lang: 'koi', gender: 'm', text: 'Θερμὸν σήμερον τὸ ὕδωρ τῆς πηγῆς.', gloss: { en: 'The spring water is warm today.', tr: 'Kaynağın suyu bugün sıcak.' } },
+  // Latin (Roman era): only stationed soldiers/officials speak it (see WalkBarks)
+  { id: 'la-1', lang: 'la', gender: 'm', text: 'Salve!', gloss: { en: 'Hello!', tr: 'Merhaba!' } },
   { id: 'la-2', lang: 'la', gender: 'm', text: 'Salve, peregrine.', gloss: { en: 'Hello, stranger.', tr: 'Merhaba, yabancı.' } },
   { id: 'la-3', lang: 'la', gender: 'm', text: 'Cave! Cede viam!', gloss: { en: 'Watch out! Make way!', tr: 'Dikkat! Yol ver!' } },
-  { id: 'la-4', lang: 'la', gender: 'f', text: 'Unde venis?', gloss: { en: 'Where do you come from?', tr: 'Nereden geliyorsun?' } },
-  { id: 'la-5', lang: 'la', gender: 'f', text: 'Ad thermas eo.', gloss: { en: 'I am going to the baths.', tr: 'Hamama gidiyorum.' } },
   { id: 'la-6', lang: 'la', gender: 'm', text: 'Di te servent.', gloss: { en: 'May the gods keep you.', tr: 'Tanrılar seni korusun.' } },
-  { id: 'la-7', lang: 'la', gender: 'f', text: 'Emite lanam purpuream!', gloss: { en: 'Buy purple wool!', tr: 'Mor yün alın!' } },
   { id: 'la-8', lang: 'la', gender: 'm', text: 'Quid novi?', gloss: { en: 'What’s new?', tr: 'Ne var ne yok?' } },
   // Byzantine Greek
   { id: 'byz-1', lang: 'byz', gender: 'any', text: 'Εἰρήνη σοι.', gloss: { en: 'Peace be with you.', tr: 'Selam sana.' } },

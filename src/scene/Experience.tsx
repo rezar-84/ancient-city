@@ -10,7 +10,6 @@ import { City } from './City'
 import { CityGrid } from './CityGrid'
 import { CityDetails } from './CityDetails'
 import { Pins } from './Pins'
-import { TodayTiles } from './TodayTiles'
 import { computeSky, SKY } from './sky'
 import { isLight } from './quality'
 import Torches from './Torches'
@@ -28,16 +27,24 @@ import { useState } from 'react'
 const terrainPromise = loadTerrain()
 patchFogChunks()
 const PostFX = lazy(() => import('./PostFX'))
+const TodayTiles = lazy(() => import('./TodayTiles'))
 
-const SHADOW_RES = isLight ? 1536 : 3072
+const SHADOW_RES = isLight ? 1536 : 2048
 /** ?fx=0 / ?fx=1 forces the post-processing tier off/on (testing). */
 const fxParam = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('fx') : null
+/** Initial post-FX tier. Context attributes are fixed at creation: SMAA in the composer replaces canvas MSAA. */
+const FX_INITIAL = fxParam ? fxParam === '1' : !isLight
+/** Static-scene shadow refresh safety net (frames). */
+const SHADOW_REFRESH_FRAMES = 30
 
 
 function World() {
   const data = use(terrainPromise)
   const era = useApp((s) => s.era)
   const walking = useApp((s) => s.mode === 'walk')
+  // mount the Today tiles on the first switch and keep them alive afterwards (one API session per visit)
+  const [tilesWanted, setTilesWanted] = useState(false)
+  useEffect(() => { if (era === 'today') setTilesWanted(true) }, [era])
   return (
     <>
       <Terrain data={data} />
@@ -50,7 +57,7 @@ function World() {
       {!walking && <Pins terrain={data} />}
       <PloutonionMist terrain={data} />
       <PlanInk terrain={data} />
-      {era === 'today' && <TodayTiles terrain={data} />}
+      {tilesWanted && <Suspense fallback={null}><TodayTiles terrain={data} active={era === 'today'} /></Suspense>}
     </>
   )
 }
@@ -59,8 +66,19 @@ function Lights() {
   const light = useRef<THREE.DirectionalLight>(null)
   const hemi = useRef<THREE.HemisphereLight>(null)
   const live = useRef({ hour: -1, sent: 0 })
-  const { scene } = useThree()
+  const { scene, gl } = useThree()
   const fog = useRef<THREE.Fog>(null)
+  // Shadow map renders on demand: when its frame moves, the sun turns, the scene changes, or the world is animated.
+  const shadowState = useRef({ burst: 8, frame: 0, x: NaN, y: NaN, z: NaN, ext: 0, geometries: -1, textures: -1, dir: new THREE.Vector3() })
+  useEffect(() => {
+    const l = light.current
+    if (l) { l.shadow.autoUpdate = false; l.shadow.needsUpdate = true }
+    // era/mode/grid/year/hour/tiles switches mount, unmount or re-time content (City flattens over ~2 s): refresh for a burst
+    return useApp.subscribe((st, prev) => {
+      if (st.era !== prev.era || st.mode !== prev.mode || st.showGrid !== prev.showGrid || st.year !== prev.year ||
+          st.hour !== prev.hour || st.tiles !== prev.tiles || st.selected !== prev.selected) shadowState.current.burst = 180
+    })
+  }, [])
   useEffect(() => {
     const l = light.current
     if (!l) return
@@ -112,6 +130,22 @@ function Lights() {
     l.position.set(tx + SKY.lightDir.x * 1600, tgt.current.y + SKY.lightDir.y * 1600, tz + SKY.lightDir.z * 1600)
     // bias in world units scales with texel size: no acne on the travertine, no peter-panning under houses
     l.shadow.normalBias = THREE.MathUtils.clamp(texel * 1.6, 0.06, 1.0)
+
+    const ss = shadowState.current, st = useApp.getState()
+    // animated casters: walk (citizens, carts, horse) and the visible ancient crowd in tour / explore-with-grid
+    const animated = st.mode === 'walk' || (st.era === 'ancient' && (st.mode === 'tour' || (st.mode === 'explore' && st.showGrid)))
+    const mem = gl.info.memory
+    const moved = tx !== ss.x || tz !== ss.z || Math.abs(tgt.current.y - ss.y) > texel * 0.5 || sc.right !== ss.ext
+    const turned = ss.dir.dot(SKY.lightDir) < 1 - 2e-7
+    const mounted = mem.geometries !== ss.geometries || mem.textures !== ss.textures
+    ss.frame++
+    if (animated || moved || turned || mounted || ss.burst > 0 || ss.frame >= SHADOW_REFRESH_FRAMES) {
+      l.shadow.needsUpdate = true
+      ss.frame = 0
+      ss.x = tx; ss.y = tgt.current.y; ss.z = tz; ss.ext = sc.right
+      ss.dir.copy(SKY.lightDir); ss.geometries = mem.geometries; ss.textures = mem.textures
+    }
+    if (ss.burst > 0) ss.burst--
   })
   return (
     <>
@@ -206,43 +240,25 @@ function Controls() {
   )
 }
 
-/** One resolution owner combines measured capacity with camera motion. */
-function MotionQuality({ onMotion }: { onMotion: (moving: boolean) => void }) {
-  const previous = useRef(new THREE.Vector3())
-  const rotation = useRef(new THREE.Quaternion())
-  const lastMove = useRef(0)
-  const active = useRef(false)
-  useFrame(({ camera, clock }) => {
-    if (capturePipeline.busy) return
-    const now = clock.elapsedTime
-    if (previous.current.distanceToSquared(camera.position) > 0.0001 ||
-        1 - Math.abs(rotation.current.dot(camera.quaternion)) > 0.000001) lastMove.current = now
-    previous.current.copy(camera.position); rotation.current.copy(camera.quaternion)
-    const moving = now - lastMove.current < 0.8
-    if (active.current !== moving) { active.current = moving; onMotion(moving) }
-  })
-  return null
-}
-
 export function Experience() {
   const showPerf = useApp((s) => s.showPerf)
   const mode = useApp((s) => s.mode)
   const maxDpr = Math.min(window.devicePixelRatio, 1.75)
+  // PerformanceMonitor owns resolution; camera motion no longer resizes the canvas and composer.
   const [dpr, setDpr] = useState(maxDpr)
-  const [moving, setMoving] = useState(false)
   // Fixed resolution is useful for honest before/after profiling.
   const fixedValue = Number(new URLSearchParams(window.location.search).get('dpr'))
   const fixedDpr = fixedValue > 0 ? THREE.MathUtils.clamp(fixedValue, 0.65, maxDpr) : null
   // quality tier: AO/SMAA post chain on desktop GPUs; the first sustained decline turns it off for the session
-  const [fx, setFx] = useState(fxParam ? fxParam === '1' : !isLight)
+  const [fx, setFx] = useState(FX_INITIAL)
   useEffect(() => {
     if (import.meta.env.DEV) (window as unknown as { __fx: (on: boolean) => void }).__fx = setFx
   }, [])
   return (
     <Canvas
       shadows
-      dpr={fixedDpr ?? Math.max(0.65, dpr * (moving ? 0.8 : 1))}
-      gl={{ antialias: true, powerPreference: 'high-performance', alpha: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.0 }}
+      dpr={fixedDpr ?? Math.max(0.65, dpr)}
+      gl={{ antialias: !FX_INITIAL, powerPreference: 'high-performance', alpha: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.0 }}
       camera={{ position: [-1600, 1100, 1500], fov: 42, near: 2, far: 30000 }}
       onCreated={({ gl, scene }) => { if (import.meta.env.DEV) { (window as unknown as { __gl: unknown; __scene: unknown }).__gl = gl; (window as unknown as { __scene: unknown }).__scene = scene; installCapture(gl, scene) } }}
       onPointerMissed={() => useApp.getState().mode !== 'tour' && useApp.getState().select(null)}
@@ -254,7 +270,6 @@ export function Experience() {
         onIncline={() => { if (!capturePipeline.busy) setDpr((d) => Math.min(maxDpr, d + 0.1)) }}
         onFallback={() => { if (capturePipeline.busy) return; if (fxParam !== '1') setFx(false); setDpr(0.65) }}
       />
-      <MotionQuality onMotion={setMoving} />
       <Lights />
       <Suspense fallback={null}>
         <World />

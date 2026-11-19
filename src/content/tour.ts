@@ -21,8 +21,8 @@ const steps: TourStep[] = [
     title: { en: 'The Holy City', tr: 'Kutsal Kent' },
     at: [37.9265, 29.1245], view: { bearing: 250, elev: 28, dist: 1700 }, flight: 4, spin: 0.35,
     text: {
-      en: 'Welcome to Hierapolis, the Holy City. Two thousand years ago, on this plateau in Phrygia, hot springs bubbled out of the earth and spilled over the cliff, painting the hillside white. Here, the kings of Pergamon founded a city that would become one of the great spa towns of the Roman world.',
-      tr: 'Kutsal Kent Hierapolis’e hoş geldiniz. İki bin yıl önce Frigya’daki bu platoda sıcak su kaynakları topraktan fışkırır, yamaçtan aşağı dökülerek tepeyi beyaza boyardı. Bergama kralları burada, Roma dünyasının büyük kaplıca kentlerinden biri olacak bir kent kurdu.',
+      en: 'Welcome to Hierapolis, the Holy City. Two thousand years ago, on this plateau in Phrygia, hot springs bubbled out of the earth and spilled over the cliff, painting the hillside white. Here a Greek city was founded, probably by the kings of Pergamon, though some scholars credit the Seleucids. It would become one of the great spa towns of the Roman world.',
+      tr: 'Kutsal Kent Hierapolis’e hoş geldiniz. İki bin yıl önce Frigya’daki bu platoda sıcak su kaynakları topraktan fışkırır, yamaçtan aşağı dökülerek tepeyi beyaza boyardı. Burada, muhtemelen Bergama kralları tarafından —bazı araştırmacılar Selevkoslara bağlasa da— bir Yunan kenti kuruldu. Bu kent Roma dünyasının büyük kaplıca kentlerinden biri olacaktı.',
     },
   },
   {
@@ -39,8 +39,8 @@ const steps: TourStep[] = [
     title: { en: 'City of the dead', tr: 'Ölüler kenti' },
     landmark: 'necropolis', view: { bearing: 200, elev: 26, dist: 480 },
     text: {
-      en: 'Arriving from Laodicea, travellers first passed through the Northern Necropolis — more than twelve hundred tombs lining the road. Many people came here hoping to be healed, and many were buried here: in earth mounds, in house-shaped tombs, and in carved stone sarcophagi.',
-      tr: 'Laodikeia’dan gelen yolcular önce Kuzey Nekropol’den geçerdi — yol boyunca dizilmiş bin iki yüzden fazla mezar. Pek çok kişi şifa bulma umuduyla buraya geldi ve pek çoğu burada gömüldü: toprak tümülüslerde, ev biçimli mezarlarda ve oyma taş lahitlerde.',
+      en: 'Arriving from the north, on the road from Tripolis, travellers first passed through the Northern Necropolis — more than twelve hundred tombs lining the road. Many people came here hoping to be healed, and many were buried here: in earth mounds, in house-shaped tombs, and in carved stone sarcophagi.',
+      tr: 'Kuzeyden, Tripolis yolundan gelen yolcular önce Kuzey Nekropol’den geçerdi — yol boyunca dizilmiş bin iki yüzden fazla mezar. Pek çok kişi şifa bulma umuduyla buraya geldi ve pek çoğu burada gömüldü: toprak tümülüslerde, ev biçimli mezarlarda ve oyma taş lahitlerde.',
     },
   },
   {
@@ -66,8 +66,8 @@ const steps: TourStep[] = [
     title: { en: 'The Gate to Hell', tr: 'Cehennem Kapısı' },
     landmark: 'ploutonion', view: { bearing: 215, elev: 26, dist: 90 },
     text: {
-      en: 'Beneath the Temple of Apollo lies the Ploutonion, a cave sacred to Pluto, lord of the underworld. Its breath is deadly carbon dioxide. Ancient writers tell of birds dropping dead at the entrance, while priests walked in unharmed. Archaeologists rediscovered it in 2013.',
-      tr: 'Apollon Tapınağı’nın altında, yeraltının efendisi Pluton’a adanmış bir mağara olan Plutonion yatar. Nefesi ölümcül karbondioksittir. Antik yazarlar girişte kuşların ölüp düştüğünü, rahiplerin ise zarar görmeden içeri girdiğini anlatır. Arkeologlar onu 2013’te yeniden buldu.',
+      en: 'Just south of the Sanctuary of Apollo lies the Ploutonion, a cave sacred to Pluto, lord of the underworld. Its breath is deadly carbon dioxide. Ancient writers tell of birds dropping dead at the entrance, while priests walked in unharmed. Archaeologists identified its sanctuary in 2013.',
+      tr: 'Apollon Kutsal Alanı’nın hemen güneyinde, yeraltının efendisi Pluton’a adanmış bir mağara olan Plutonion yer alır. Nefesi ölümcül karbondioksittir. Antik yazarlar girişte kuşların ölüp düştüğünü, rahiplerin ise zarar görmeden içeri girdiğini anlatır. Arkeologlar kutsal alanını 2013’te tanımladı.',
     },
   },
   {
@@ -76,8 +76,8 @@ const steps: TourStep[] = [
     landmark: 'theatre', view: { bearing: 250, elev: 38, dist: 200 },
     flight: 3, spin: 0.3,
     text: {
-      en: 'Carved into the hillside, the theatre held around twelve thousand spectators. Its stage building, finished under Septimius Severus, was decorated with reliefs of Apollo, Artemis and Dionysus. Italian archaeologists, working here since 1957, have raised many of its columns again.',
-      tr: 'Yamaca oyulmuş tiyatro yaklaşık on iki bin seyirci alırdı. Septimius Severus döneminde tamamlanan sahne binası Apollon, Artemis ve Dionysos kabartmalarıyla süslüydü. 1957’den beri burada çalışan İtalyan arkeologlar sütunlarının çoğunu yeniden ayağa kaldırdı.',
+      en: 'Carved into the hillside, the theatre held an estimated ten to twelve thousand spectators. Its stage building, finished under Septimius Severus, was decorated with reliefs of Apollo, Artemis and Dionysus. Italian archaeologists, working here since 1957, have raised many of its columns again.',
+      tr: 'Yamaca oyulmuş tiyatro tahminen on ila on iki bin seyirci alırdı. Septimius Severus döneminde tamamlanan sahne binası Apollon, Artemis ve Dionysos kabartmalarıyla süslüydü. 1957’den beri burada çalışan İtalyan arkeologlar sütunlarının çoğunu yeniden ayağa kaldırdı.',
     },
   },
   {

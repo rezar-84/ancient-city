@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { clone } from 'three/examples/jsm/utils/SkeletonUtils.js'
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js'
 
 export type Era = 'greek' | 'roman' | 'byzantine'
 export type Gender = 'm' | 'f'
@@ -26,6 +27,26 @@ export interface CitizenConfig {
   age?: AgeGroup
 }
 
+/** GLTFLoader for the meshopt-compressed (EXT_meshopt_compression, lossless float attributes) citizen and animal GLBs. */
+export function createMeshoptGLTFLoader() {
+  return new GLTFLoader().setMeshoptDecoder(MeshoptDecoder)
+}
+
+/** Detail level for one citizen update: full IK + cloth, animation only (skinned hem), or off-screen (time only). */
+export const CITIZEN_DETAIL = { offscreen: 0, animated: 1, full: 2 } as const
+export type CitizenDetail = typeof CITIZEN_DETAIL[keyof typeof CITIZEN_DETAIL]
+
+/** Generous fixed culling sphere around each rig (world metres at unit root scale), covering raised spears and staffs. */
+const CULL_CENTER_Y = 0.95
+const CULL_RADIUS = 1.75
+/** Cloth solver step: 30 Hz with damping/spring/gravity rescaled from the original 60 Hz tuning. */
+const SIM_STEP = 1 / 30
+
+// Module scratch objects shared by every rig (updates are synchronous, never re-entrant).
+const _hip = new THREE.Vector3(), _joint = new THREE.Vector3(), _ankle = new THREE.Vector3()
+const _tmp = new THREE.Vector3(), _fwd = new THREE.Vector3(), _delta = new THREE.Vector3()
+const _footRotation = new THREE.Quaternion()
+
 type Assets = { m: GLTF; f: GLTF; motions: GLTF }
 let assets: Assets | null = null
 let pending: Promise<void> | null = null
@@ -33,7 +54,7 @@ let pending: Promise<void> | null = null
 /** Only fetched on entering walk mode. The existing instanced crowd remains available on failure. */
 export function loadCitizenAssets() {
   if (!pending) {
-    const loader = new GLTFLoader()
+    const loader = createMeshoptGLTFLoader()
     pending = Promise.all(['male', 'female', 'motions'].map(n => loader.loadAsync(`/models/citizens/${n}.glb`)))
       .then(([m, f, motions]) => { assets = { m, f, motions } })
       .catch(error => { pending = null; throw error })
@@ -111,8 +132,8 @@ function makeRigidSkinned(geometry: THREE.BufferGeometry, boneIndex: number, ske
   g.computeVertexNormals()
   const mesh = new THREE.SkinnedMesh(g, material)
   mesh.bind(skeleton, bindMatrix)
-  mesh.castShadow = mesh.receiveShadow = true
-  mesh.frustumCulled = false
+  // Accessories receive but do not cast shadows; culling uses the rig's fixed bounding sphere.
+  mesh.castShadow = false; mesh.receiveShadow = true
   return mesh
 }
 
@@ -230,7 +251,9 @@ function makeOutfit(body: THREE.SkinnedMesh, era: Era, palette: Palette, gender:
 
   const baseMeshes = [top, skirt, belt].map((geometry, i) => {
     const mesh = new THREE.SkinnedMesh(geometry, i === 2 ? trim : cloth)
-    mesh.bind(body.skeleton, body.bindMatrix); mesh.castShadow = mesh.receiveShadow = true; mesh.frustumCulled = false
+    mesh.bind(body.skeleton, body.bindMatrix)
+    // Tunic top and skirt cast shadows; the belt only receives.
+    mesh.castShadow = i !== 2; mesh.receiveShadow = true
     return mesh
   })
 
@@ -260,8 +283,7 @@ function makeOutfit(body: THREE.SkinnedMesh, era: Era, palette: Palette, gender:
     const m = new THREE.Mesh(geo, mat)
     m.position.set(...pos)
     m.rotation.set(...rot)
-    m.castShadow = m.receiveShadow = true
-    m.frustumCulled = false
+    m.castShadow = false; m.receiveShadow = true
     m.visible = false
     if (bone) bone.add(m)
     boneAttachments.push(m)
@@ -407,8 +429,11 @@ function secondaryMotion(root: THREE.Group, skirt: THREE.SkinnedMesh, fabricPara
   root.updateMatrixWorld(true)
   const legs = ['l', 'r'].map(side => {
     const thigh = root.getObjectByName(`thigh_${side}`)!, calf = root.getObjectByName(`calf_${side}`)!, foot = root.getObjectByName(`foot_${side}`)!
+    const hip = new THREE.Vector3(), kneePos = new THREE.Vector3(), ankle = new THREE.Vector3()
     return { thigh, calf, foot, sole: foot.getWorldPosition(new THREE.Vector3()).y - root.position.y,
-      hip: new THREE.Vector3(), kneePos: new THREE.Vector3(), ankle: new THREE.Vector3(),
+      hip, kneePos, ankle,
+      // Two-segment leg capsules (thigh->knee, knee->ankle), built once per rig.
+      segments: [{ a: hip, b: kneePos, r: 0.094 }, { a: kneePos, b: ankle, r: 0.078 }],
       bones: [thigh, calf, foot], saved: [thigh, calf, foot].map(b => b.quaternion.clone()), adjusted: false }
   })
   const spine1 = root.getObjectByName('spine_01'), spine2 = root.getObjectByName('spine_02'), headBone = root.getObjectByName('Head')
@@ -420,18 +445,19 @@ function secondaryMotion(root: THREE.Group, skirt: THREE.SkinnedMesh, fabricPara
 
   const geometry = skirt.geometry.clone()
   const cloth = new THREE.Mesh(geometry, skirt.material)
-  cloth.name = 'SimulatedTunic'; cloth.castShadow = cloth.receiveShadow = true; cloth.frustumCulled = false
+  cloth.name = 'SimulatedTunic'; cloth.castShadow = cloth.receiveShadow = true
   skirt.parent!.add(cloth); skirt.visible = false
   const particles = Array.from({ length: 144 }, () => new THREE.Vector3())
   const previous = particles.map(p => p.clone()), targets = particles.map(p => p.clone())
-  const edges: [number, number][] = []
+  const edgeList: number[] = []
   for (let row = 0; row < 6; row++) for (let col = 0; col < 24; col++) {
     const i = row * 24 + col
-    edges.push([i, row * 24 + (col + 1) % 24])
-    if (row < 5) { edges.push([i, i + 24]); edges.push([i, (row + 1) * 24 + (col + 1) % 24]) }
+    edgeList.push(i, row * 24 + (col + 1) % 24)
+    if (row < 5) edgeList.push(i, i + 24, i, (row + 1) * 24 + (col + 1) % 24)
   }
-  const restLengths = new Float32Array(edges.length)
-  let ready = false, accumulator = 0, extraStoop = 0
+  const edges = Uint16Array.from(edgeList), edgeCount = edges.length / 2
+  const restLengths = new Float32Array(edgeCount)
+  let ready = false, accumulator = 0, extraStoop = 0, simulated = true
   const lastRoot = new THREE.Vector3(), inverse = new THREE.Matrix4()
   const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), direction = new THREE.Vector3(), bend = new THREE.Vector3(), knee = new THREE.Vector3(), target = new THREE.Vector3()
   const rotation = new THREE.Quaternion(), parentRotation = new THREE.Quaternion(), worldRotation = new THREE.Quaternion()
@@ -447,23 +473,31 @@ function secondaryMotion(root: THREE.Group, skirt: THREE.SkinnedMesh, fabricPara
   }
   function restore() {
     for (const leg of legs) if (leg.adjusted) {
-      leg.bones.forEach((bone, i) => bone.quaternion.copy(leg.saved[i])); leg.adjusted = false
+      for (let i = 0; i < leg.bones.length; i++) leg.bones[i].quaternion.copy(leg.saved[i])
+      leg.adjusted = false
     }
     if (postureAdjusted) {
-      postureBones.forEach((bone, i) => bone.quaternion.copy(postureSaved[i]))
+      for (let i = 0; i < postureBones.length; i++) postureBones[i].quaternion.copy(postureSaved[i])
       postureAdjusted = false
     }
   }
   return {
+    cloth,
     restore,
     setStoop(rad: number) { extraStoop = rad },
     setHeadScale(s: number) { if (headBone) headBone.scale.setScalar(s) },
     reset() { restore(); ready = false; accumulator = 0 },
+    /** false: hide the simulated hem and show the skinned skirt (distant rigs skip IK and cloth). */
+    setSimulated(on: boolean) {
+      if (on === simulated) return
+      simulated = on; cloth.visible = on; skirt.visible = !on
+      if (on) { ready = false; accumulator = 0 }
+    },
     update(dt: number, motion: CitizenMotion) {
       const reach = THREE.MathUtils.clamp(motion.reach ?? 0, 0, 1)
       const totalBend = extraStoop + (motion.bend ?? 0) + reach * 0.16
       if (Math.abs(totalBend) > 1e-4 || Math.abs(motion.look) > 1e-4 || reach > 1e-4) {
-        postureBones.forEach((bone, i) => postureSaved[i].copy(bone.quaternion))
+        for (let i = 0; i < postureBones.length; i++) postureSaved[i].copy(postureBones[i].quaternion)
         postureAdjusted = true
         if (spine1 && Math.abs(totalBend) > 1e-4) spine1.rotateX(totalBend * 0.55)
         if (spine2 && Math.abs(totalBend) > 1e-4) spine2.rotateX(totalBend * 0.45)
@@ -481,7 +515,7 @@ function secondaryMotion(root: THREE.Group, skirt: THREE.SkinnedMesh, fabricPara
       }
       root.updateWorldMatrix(true, true)
       if (motion.grounded && motion.groundAt) for (const leg of legs) {
-        const hip = leg.thigh.getWorldPosition(new THREE.Vector3()), joint = leg.calf.getWorldPosition(new THREE.Vector3()), ankle = leg.foot.getWorldPosition(new THREE.Vector3())
+        const hip = leg.thigh.getWorldPosition(_hip), joint = leg.calf.getWorldPosition(_joint), ankle = leg.foot.getWorldPosition(_ankle)
         const floor = motion.groundAt(ankle.x, ankle.z)
         if (!Number.isFinite(floor) || Math.abs(floor - root.position.y) > 0.4) continue
         const sole = leg.sole * root.scale.y
@@ -494,79 +528,100 @@ function secondaryMotion(root: THREE.Group, skirt: THREE.SkinnedMesh, fabricPara
         direction.copy(target).sub(hip)
         const distance = THREE.MathUtils.clamp(direction.length(), Math.abs(upper - lower) + 0.001, upper + lower - 0.001)
         direction.normalize(); target.copy(hip).addScaledVector(direction, distance)
-        bend.copy(joint).sub(hip).addScaledVector(direction, -joint.clone().sub(hip).dot(direction))
-        if (bend.lengthSq() < 1e-6) bend.set(0, 0, 1).applyQuaternion(root.quaternion).addScaledVector(direction, -direction.dot(new THREE.Vector3(0, 0, 1).applyQuaternion(root.quaternion)))
+        bend.copy(joint).sub(hip).addScaledVector(direction, -_tmp.copy(joint).sub(hip).dot(direction))
+        if (bend.lengthSq() < 1e-6) {
+          _fwd.set(0, 0, 1).applyQuaternion(root.quaternion)
+          bend.copy(_fwd).addScaledVector(direction, -direction.dot(_fwd))
+        }
         bend.normalize()
         const along = (upper * upper - lower * lower + distance * distance) / (2 * distance)
         knee.copy(hip).addScaledVector(direction, along).addScaledVector(bend, Math.sqrt(Math.max(0, upper * upper - along * along)))
-        leg.bones.forEach((bone, i) => leg.saved[i].copy(bone.quaternion)); leg.adjusted = true
-        leg.foot.getWorldQuaternion(worldRotation); const footRotation = worldRotation.clone()
+        for (let i = 0; i < leg.bones.length; i++) leg.saved[i].copy(leg.bones[i].quaternion)
+        leg.adjusted = true
+        leg.foot.getWorldQuaternion(_footRotation)
         aim(leg.thigh, leg.calf, knee); aim(leg.calf, leg.foot, target)
         leg.foot.parent!.getWorldQuaternion(parentRotation).invert()
-        leg.foot.quaternion.copy(parentRotation.multiply(footRotation))
+        leg.foot.quaternion.copy(parentRotation.multiply(_footRotation))
         leg.foot.updateWorldMatrix(false, true)
       }
       skirt.skeleton.update()
-      for (let row = 0; row < 6; row++) for (let col = 0; col < 24; col++) {
+      const teleported = !ready || lastRoot.distanceToSquared(root.position) > 1
+      accumulator = Math.min(accumulator + dt, 2 * SIM_STEP)
+      const stepping = teleported || accumulator >= SIM_STEP
+      // Between 30 Hz solver steps only the pinned waist row is re-sampled from the skinned skirt.
+      const sampledRows = stepping ? 6 : 1
+      for (let row = 0; row < sampledRows; row++) for (let col = 0; col < 24; col++) {
         skirt.getVertexPosition(row * 25 + col, targets[row * 24 + col]).applyMatrix4(skirt.matrixWorld)
       }
-      edges.forEach(([i, j], index) => { restLengths[index] = targets[i].distanceTo(targets[j]) })
-      legs.forEach(leg => {
-        leg.thigh.getWorldPosition(leg.hip)
-        leg.calf.getWorldPosition(leg.kneePos)
-        leg.foot.getWorldPosition(leg.ankle)
-      })
-      pelvis.getWorldPosition(seat)
-      root.getWorldQuaternion(inverseRootRotation).invert()
-      forwardWorld.set(0, 0, 1).applyQuaternion(root.quaternion)
-      if (!ready || lastRoot.distanceToSquared(root.position) > 1) {
-        particles.forEach((p, i) => { p.copy(targets[i]); previous[i].copy(p) }); ready = true
+      for (let i = 0; i < 24; i++) { particles[i].copy(targets[i]); previous[i].copy(targets[i]) }
+      if (teleported) {
+        for (let i = 0; i < particles.length; i++) { particles[i].copy(targets[i]); previous[i].copy(targets[i]) }
+        ready = true
+      } else if (!stepping) {
+        // Carry the free hem with the walker between steps (velocity preserved) so it never stutters behind the body.
+        _delta.copy(root.position).sub(lastRoot)
+        for (let i = 24; i < particles.length; i++) { particles[i].add(_delta); previous[i].add(_delta) }
       }
-      lastRoot.copy(root.position); accumulator = Math.min(accumulator + dt, 3 / 60)
-      const trailingDrag = Math.min(motion.speed, 6) * 0.35 / 3600
-      while (accumulator >= 1 / 60) {
-        accumulator -= 1 / 60
-        for (let i = 0; i < particles.length; i++) {
-          const p = particles[i]
-          if (i < 24) { p.copy(targets[i]); previous[i].copy(p); continue }
-          const rowF = Math.floor(i / 24) / 5
-          a.copy(p); b.copy(p).sub(previous[i]).multiplyScalar(fabricParams.damping)
-          p.add(b).addScaledVector(c.copy(targets[i]).sub(p), fabricParams.spring)
-          p.y -= 2.2 / 3600
-          // Natural aerodynamic trail backward along -forwardWorld so side & rear silhouettes billow cleanly in motion
-          p.addScaledVector(forwardWorld, -trailingDrag * rowF)
-          previous[i].copy(a)
+      lastRoot.copy(root.position)
+      if (stepping) {
+        for (let e = 0; e < edgeCount; e++) restLengths[e] = targets[edges[e * 2]].distanceTo(targets[edges[e * 2 + 1]])
+        for (const leg of legs) {
+          leg.thigh.getWorldPosition(leg.hip)
+          leg.calf.getWorldPosition(leg.kneePos)
+          leg.foot.getWorldPosition(leg.ankle)
         }
-        for (let iteration = 0; iteration < 4; iteration++) {
-          for (let edge = 0; edge < edges.length; edge++) {
-            const [i, j] = edges[edge]
-            const p = particles[i], q = particles[j], rest = restLengths[edge]
-            a.copy(q).sub(p); const length = a.length()
-            if (length < 1e-8) continue
-            a.multiplyScalar((length - rest) / length)
-            if (i >= 24) p.addScaledVector(a, j < 24 ? 1 : 0.5)
-            if (j >= 24) q.addScaledVector(a, i < 24 ? -1 : -0.5)
-          }
+        pelvis.getWorldPosition(seat)
+        root.getWorldQuaternion(inverseRootRotation).invert()
+        forwardWorld.set(0, 0, 1).applyQuaternion(root.quaternion)
+        // 60 Hz tuning converted to a 30 Hz step: per-second damping/spring retention and dt^2-scaled gravity/drag stay equal.
+        const damping = fabricParams.damping * fabricParams.damping
+        const spring = 1 - (1 - fabricParams.spring) * (1 - fabricParams.spring)
+        const gravity = 2.2 / 900
+        const trailingDrag = Math.min(motion.speed, 6) * 0.35 / 900
+        const scaleX = root.scale.x
+        while (accumulator >= SIM_STEP) {
+          accumulator -= SIM_STEP
           for (let i = 24; i < particles.length; i++) {
             const p = particles[i]
-            a.copy(p).sub(targets[i]); if (a.length() > 0.12) p.copy(targets[i]).add(a.setLength(0.12))
-            // Two-segment leg capsules (thigh->knee and knee->ankle) keep side-view bent knees and rear calves cleanly covered.
-            for (const leg of legs) {
-              for (const [segA, segB, rad] of [[leg.hip, leg.kneePos, 0.094], [leg.kneePos, leg.ankle, 0.078]] as const) {
-                a.copy(segA); b.copy(segB).sub(a)
-                const t = THREE.MathUtils.clamp(c.copy(p).sub(a).dot(b) / Math.max(b.lengthSq(), 1e-8), 0, 1)
-                a.addScaledVector(b, t); c.copy(p).sub(a)
-                const radius = rad * root.scale.x
-                if (c.lengthSq() < radius * radius) p.copy(a).add(c.lengthSq() > 1e-8 ? c.setLength(radius) : c.set(radius, 0, 0))
-              }
+            const rowF = Math.floor(i / 24) / 5
+            a.copy(p); b.copy(p).sub(previous[i]).multiplyScalar(damping)
+            p.add(b).addScaledVector(c.copy(targets[i]).sub(p), spring)
+            p.y -= gravity
+            // Natural aerodynamic trail backward along -forwardWorld so side & rear silhouettes billow cleanly in motion
+            p.addScaledVector(forwardWorld, -trailingDrag * rowF)
+            previous[i].copy(a)
+          }
+          for (let iteration = 0; iteration < 4; iteration++) {
+            for (let edge = 0; edge < edgeCount; edge++) {
+              const i = edges[edge * 2], j = edges[edge * 2 + 1]
+              const p = particles[i], q = particles[j], rest = restLengths[edge]
+              a.copy(q).sub(p); const length = a.length()
+              if (length < 1e-8) continue
+              a.multiplyScalar((length - rest) / length)
+              if (i >= 24) p.addScaledVector(a, j < 24 ? 1 : 0.5)
+              if (j >= 24) q.addScaledVector(a, i < 24 ? -1 : -0.5)
             }
-            // Keep the rear panel outside the pelvis & seat as thighs and torso rotate.
-            seatLocal.copy(p).sub(seat).applyQuaternion(inverseRootRotation)
-            const sx = seatLocal.x / (0.185 * root.scale.x), sy = seatLocal.y / (0.185 * root.scale.y), sz = seatLocal.z / (0.168 * root.scale.z)
-            const radiusSq = sx * sx + sy * sy + sz * sz
-            if (radiusSq < 1) {
-              seatLocal.multiplyScalar(1 / Math.sqrt(Math.max(radiusSq, 1e-6))).applyQuaternion(root.quaternion)
-              p.copy(seat).add(seatLocal)
+            for (let i = 24; i < particles.length; i++) {
+              const p = particles[i]
+              a.copy(p).sub(targets[i]); if (a.length() > 0.12) p.copy(targets[i]).add(a.setLength(0.12))
+              // Two-segment leg capsules (thigh->knee and knee->ankle) keep side-view bent knees and rear calves cleanly covered.
+              for (const leg of legs) {
+                for (const seg of leg.segments) {
+                  a.copy(seg.a); b.copy(seg.b).sub(a)
+                  const t = THREE.MathUtils.clamp(c.copy(p).sub(a).dot(b) / Math.max(b.lengthSq(), 1e-8), 0, 1)
+                  a.addScaledVector(b, t); c.copy(p).sub(a)
+                  const radius = seg.r * scaleX
+                  if (c.lengthSq() < radius * radius) p.copy(a).add(c.lengthSq() > 1e-8 ? c.setLength(radius) : c.set(radius, 0, 0))
+                }
+              }
+              // Keep the rear panel outside the pelvis & seat as thighs and torso rotate.
+              seatLocal.copy(p).sub(seat).applyQuaternion(inverseRootRotation)
+              const sx = seatLocal.x / (0.185 * root.scale.x), sy = seatLocal.y / (0.185 * root.scale.y), sz = seatLocal.z / (0.168 * root.scale.z)
+              const radiusSq = sx * sx + sy * sy + sz * sz
+              if (radiusSq < 1) {
+                seatLocal.multiplyScalar(1 / Math.sqrt(Math.max(radiusSq, 1e-6))).applyQuaternion(root.quaternion)
+                p.copy(seat).add(seatLocal)
+              }
             }
           }
         }
@@ -577,14 +632,18 @@ function secondaryMotion(root: THREE.Group, skirt: THREE.SkinnedMesh, fabricPara
         a.copy(particles[row * 24 + col % 24]).applyMatrix4(inverse)
         positions.setXYZ(row * 25 + col, a.x, a.y, a.z)
       }
-      positions.needsUpdate = true; geometry.computeVertexNormals()
-      const normals = geometry.getAttribute('normal')
-      for (let row = 0; row < 6; row++) {
-        const first = row * 25, last = first + 24
-        a.fromBufferAttribute(normals, first); b.fromBufferAttribute(normals, last); a.add(b).normalize()
-        normals.setXYZ(first, a.x, a.y, a.z); normals.setXYZ(last, a.x, a.y, a.z)
+      positions.needsUpdate = true
+      // Shading normals only change with the solver (translation between steps leaves them valid).
+      if (stepping) {
+        geometry.computeVertexNormals()
+        const normals = geometry.getAttribute('normal')
+        for (let row = 0; row < 6; row++) {
+          const first = row * 25, last = first + 24
+          a.fromBufferAttribute(normals, first); b.fromBufferAttribute(normals, last); a.add(b).normalize()
+          normals.setXYZ(first, a.x, a.y, a.z); normals.setXYZ(last, a.x, a.y, a.z)
+        }
+        normals.needsUpdate = true
       }
-      normals.needsUpdate = true
     },
     dispose() { geometry.dispose() },
   }
@@ -607,7 +666,7 @@ export function instantiateCitizen(model: GLTF, motions: GLTF, era: Era, palette
     const originals = Array.isArray(o.material) ? o.material : [o.material]
     const materials = originals.map(m => { const copy = m.clone(); ownedMaterials.add(copy); return copy })
     o.material = Array.isArray(o.material) ? materials : materials[0]
-    o.castShadow = o.receiveShadow = true; o.frustumCulled = false
+    o.receiveShadow = true
     if (o instanceof THREE.SkinnedMesh) {
       skeletons.add(o.skeleton)
       if (!body || o.geometry.getAttribute('position').count > body.geometry.getAttribute('position').count) body = o
@@ -615,6 +674,8 @@ export function instantiateCitizen(model: GLTF, motions: GLTF, era: Era, palette
   })
   if (!body) throw new Error('Citizen model has no skinned body')
   const bodyMesh = body as THREE.SkinnedMesh
+  // Only the body (and the generated tunic) cast shadows; eyes, hair and props only receive.
+  content.traverse(o => { if (o instanceof THREE.Mesh) o.castShadow = o === bodyMesh })
   // Measure height from the bare body BEFORE adding role props (e.g. tall spears) so human stature stays 1.75 m.
   const bounds = new THREE.Box3().setFromObject(content)
   const outfit = makeOutfit(bodyMesh, era, palette, gender)
@@ -641,9 +702,24 @@ export function instantiateCitizen(model: GLTF, motions: GLTF, era: Era, palette
   }
   applyFabric(currentFabric)
 
+  // Frustum culling stays on: skinned parts and the simulated hem share one generous fixed sphere that follows the root.
+  root.updateMatrixWorld(true)
+  const cullCenter = new THREE.Vector3(), cullScale = new THREE.Vector3()
+  const fitSphere = (o: THREE.Object3D) => {
+    o.getWorldScale(cullScale)
+    const s = Math.max(1e-6, Math.min(Math.abs(cullScale.x), Math.abs(cullScale.y), Math.abs(cullScale.z)))
+    return new THREE.Sphere(o.worldToLocal(cullCenter.set(0, CULL_CENTER_Y, 0)), CULL_RADIUS / s)
+  }
+  root.traverse(o => {
+    if (o instanceof THREE.SkinnedMesh) { o.boundingSphere = fitSphere(o); o.frustumCulled = true }
+  })
+  secondary.cloth.geometry.boundingSphere = fitSphere(secondary.cloth)
+
   const mixer = new THREE.AnimationMixer(content)
   const actions = new Map(clips.map(c => [c.name, mixer.clipAction(c)]))
   let current: THREE.AnimationAction | null = null, actionName = '', lastGrounded = true, wasGreeting = false, gestureUntil = 0, elapsed = 0, landingUntil = 0
+  /** Animation time owed by off-screen updates, applied in one mixer step when the rig is seen again. */
+  let pendingMixerDt = 0
   const choose = (name: string, once = false) => {
     const next = actions.get(name)
     if (!next || next === current) return
@@ -709,8 +785,9 @@ export function instantiateCitizen(model: GLTF, motions: GLTF, era: Era, palette
       outfit.clothMat.color.copy(next.cloth)
       outfit.trimMat.color.copy(next.accent)
     },
-    reset() { secondary.reset(); mixer.stopAllAction(); current = null; actionName = ''; gestureUntil = landingUntil = 0; lastGrounded = true; wasGreeting = false; choose('Idle_Loop') },
-    update(rawDt: number, motion: CitizenMotion) {
+    reset() { secondary.reset(); mixer.stopAllAction(); current = null; actionName = ''; gestureUntil = landingUntil = 0; lastGrounded = true; wasGreeting = false; pendingMixerDt = 0; choose('Idle_Loop') },
+    /** detail: 2 full (IK + cloth), 1 animation only with the skinned hem (distant), 0 off-screen (advances time only). */
+    update(rawDt: number, motion: CitizenMotion, detail: CitizenDetail = CITIZEN_DETAIL.full) {
       const dt = Math.max(0, Math.min(rawDt, 0.05)); elapsed += dt
       secondary.restore()
       if (motion.wave && !wasGreeting) gestureUntil = elapsed + 1.6
@@ -728,8 +805,14 @@ export function instantiateCitizen(model: GLTF, motions: GLTF, era: Era, palette
       if (current && ['Walk_Loop', 'Jog_Fwd_Loop', 'Sprint_Loop'].includes(actionName)) {
         current.setEffectiveTimeScale(THREE.MathUtils.clamp((motion.speed * ageCadence) / (actionName === 'Walk_Loop' ? 1.5 : actionName === 'Jog_Fwd_Loop' ? 4 : 7), 0.5, 1.85))
       }
-      mixer.update(dt)
-      secondary.update(dt, motion)
+      if (detail === CITIZEN_DETAIL.offscreen) {
+        // Keep the clock running cheaply so the pose does not freeze-pop when the rig re-enters the view.
+        pendingMixerDt = Math.min(pendingMixerDt + dt, 30)
+        return
+      }
+      mixer.update(dt + pendingMixerDt); pendingMixerDt = 0
+      secondary.setSimulated(detail === CITIZEN_DETAIL.full)
+      if (detail === CITIZEN_DETAIL.full) secondary.update(dt, motion)
     },
     get action() { return actionName },
     dispose() {

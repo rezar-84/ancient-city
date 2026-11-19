@@ -13,7 +13,9 @@ import { isLight } from './quality'
 /**
  * Torches lit from late golden hour: bronze tripod braziers along the plateia and in pairs at the
  * gates, temples, theatre and churches. Flames are additive billboards flickering in the shader; a small
- * pool of point lights (4 on phones, 6 elsewhere) follows the torches nearest the walker in walk mode.
+ * pool of point lights (2 on the light tier, 6 elsewhere) follows the torches nearest the walker in walk mode.
+ * The pool is always mounted and visible (intensity 0 outside walk): three counts every visible light into the
+ * shader program key, so mounting/hiding lights on mode changes would recompile every lit material.
  */
 const POLE_H = 2.1
 const LIT_KINDS = new Set(['sacred', 'christian', 'leisure', 'defence', 'civic'])
@@ -166,19 +168,24 @@ export default function Torches({ terrain }: { terrain: Terrain }) {
   useEffect(() => () => { pole.dispose(); poleMat.dispose(); flame.dispose(); glow.dispose(); quad.dispose() }, [pole, poleMat, flame, glow, quad])
 
   // point-light pool: re-pick the nearest lit torches every few frames
-  const lightCount = isLight ? 4 : 6
+  const lightCount = isLight ? 2 : 6
   const lights = useRef<Array<THREE.PointLight | null>>([])
   const order = useMemo(() => new Int32Array(lightCount), [lightCount])
+  const best = useMemo(() => new Float64Array(lightCount), [lightCount])
   const tick = useRef(0)
   useFrame(({ camera }) => {
     const k = SKY.torch * (1 - sceneUniforms.uPlan.value)
     flame.uniforms.uTorch.value = k
     glow.uniforms.uTorch.value = k
-    if (group.current) group.current.visible = era === 'ancient' && mode !== 'plan'
-    if (mode !== 'walk') return
+    const shown = era === 'ancient' && mode !== 'plan'
+    if (group.current) group.current.visible = shown
+    if (mode !== 'walk' || !shown) {
+      for (let j = 0; j < lightCount; j++) { const l = lights.current[j]; if (l) l.intensity = 0 }
+      return
+    }
     if (++tick.current % 10 === 0) {
       const cx = camera.position.x, cz = camera.position.z
-      const best = new Float64Array(lightCount).fill(Infinity)
+      best.fill(Infinity)
       order.fill(-1)
       for (let i = 0; i < spots.length; i++) {
         const dx = spots[i][0] - cx, dz = spots[i][2] - cz, d = dx * dx + dz * dz
@@ -202,15 +209,19 @@ export default function Torches({ terrain }: { terrain: Terrain }) {
     }
   })
 
-  if (!spots.length) return null
   return (
-    <group ref={group}>
-      <instancedMesh ref={poles} args={[pole, poleMat, spots.length]} castShadow={false} receiveShadow />
-      <instancedMesh ref={flames} args={[quad, flame, spots.length]} frustumCulled={false} renderOrder={5} />
-      <instancedMesh ref={glows} args={[quad, glow, spots.length]} frustumCulled={false} renderOrder={6} />
-      {mode === 'walk' && Array.from({ length: lightCount }, (_, j) => (
+    <>
+      {spots.length > 0 && (
+        <group ref={group}>
+          <instancedMesh ref={poles} args={[pole, poleMat, spots.length]} castShadow={false} receiveShadow />
+          <instancedMesh ref={flames} args={[quad, flame, spots.length]} frustumCulled={false} renderOrder={5} />
+          <instancedMesh ref={glows} args={[quad, glow, spots.length]} frustumCulled={false} renderOrder={6} />
+        </group>
+      )}
+      {/* outside the toggled group so the light count (and every shader program) stays constant */}
+      {Array.from({ length: lightCount }, (_, j) => (
         <pointLight key={j} ref={(el) => { lights.current[j] = el }} color="#ff9a4a" intensity={0} distance={16} decay={1.6} />
       ))}
-    </group>
+    </>
   )
 }

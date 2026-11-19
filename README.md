@@ -1,54 +1,78 @@
-# React + TypeScript + Vite
+# Hierapolis Reborn
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A free, browser-based 3D journey through ancient Hierapolis, the Holy City above the travertines of Pamukkale. It is bilingual in English and Turkish. Live: <https://ar.ferially.com>
 
-Currently, two official plugins are available:
+Modes:
+- **Explore:** fly over the city on real terrain.
+- **Guided tour:** 9 narrated stops.
+- **Walk:** walk the streets as one of six characters.
+- **Archaeological plan:** a top-down map with a timeline slider from 200 BC to AD 1400.
+- **Ancient / Today:** switch to Google Photorealistic 3D Tiles of the site as it is now.
+- **AR and print:** the theatre in AR, and a printable A4 guide (`/#/guide`).
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+The project description, sources and accuracy policy are in [`docs/proposal.md`](docs/proposal.md). Performance method and measurements are in [`docs/benchmarks/`](docs/benchmarks/).
 
-## Expanding the ESLint configuration
+## Stack
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+| Area | Tools |
+|---|---|
+| App | Vite 6, React 19, TypeScript, Tailwind 3, Zustand |
+| 3D | three.js, React Three Fiber, drei, postprocessing + N8AO, three-mesh-bvh |
+| Today view | `3d-tiles-renderer` |
+| Camera | GSAP |
+| AR | `@google/model-viewer` |
+| Buildings | Procedural generators in `src/scene/generators` |
+| Content | Typed bilingual modules in `src/content` |
 
-```js
-export default tseslint.config({
-  extends: [
-    // Remove ...tseslint.configs.recommended and replace with this
-    ...tseslint.configs.recommendedTypeChecked,
-    // Alternatively, use this for stricter rules
-    ...tseslint.configs.strictTypeChecked,
-    // Optionally, add this for stylistic rules
-    ...tseslint.configs.stylisticTypeChecked,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
+## Develop
+
+```bash
+npm ci
+npm run dev        # http://localhost:5173
+npx tsc -b         # typecheck
+npm run lint
+node --test tests/*.test.cjs
+npm run build && npm run preview
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Optional `.env.local` (git-ignored):
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default tseslint.config({
-  plugins: {
-    // Add the react-x and react-dom plugins
-    'react-x': reactX,
-    'react-dom': reactDom,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended typescript rules
-    ...reactX.configs['recommended-typescript'].rules,
-    ...reactDom.configs.recommended.rules,
-  },
-})
 ```
+VITE_GOOGLE_MAPS_KEY=...   # referrer-restricted key for the Today 3D view; without it, the app falls back to satellite imagery
+ELEVENLABS_API_KEY=...     # only for the audio scripts below
+ELEVENLABS_VOICE_ID=...    # narration voice
+```
+
+Useful URL flags:
+- `?dpr=1`: fixed resolution.
+- `?fx=0` / `?fx=1`: force post-processing off or on.
+- `window.__benchmark()`: records a 20 s frame-timing sample (see `docs/benchmarks`).
+- Shift+P: toggles the stats panel.
+
+## Caching
+
+In production, `public/sw.js` serves terrain, models, textures, images and audio cache-first:
+- At build time, Vite writes a content-hash manifest into `dist/sw.js` (the `mediaManifest` plugin in `vite.config.ts`). A deploy therefore re-downloads only the files that changed.
+- In dev, no service worker is registered.
+
+Google 3D Tiles are never stored by the app; their terms allow only the browser's normal HTTP cache. Instead, a single tiles renderer and API session is kept alive for the whole page visit, so switching between Ancient and Today doesn't start a new session.
+
+## Data and asset pipelines
+
+Run the scripts from the project root. Python scripts run as `python3 -I`, TypeScript scripts with `npx -y tsx@4.19.2 --env-file=.env.local`.
+
+| Script | Output |
+|---|---|
+| `scripts/bake_terrain.py` | `public/terrain/`: AWS Terrarium heights and Esri imagery |
+| `scripts/build_ruins.py` | `src/content/ruins.ts`, from OpenStreetMap archaeological mapping |
+| `scripts/bake_runtime_textures.ts`, `scripts/bake_ancient_texture.py` | Material and terrain textures |
+| `scripts/ar/theatre_ar.ts` | `public/models/theatre.glb` and `.usdz` for AR |
+| `scripts/tts_elevenlabs.ts [--only=id,…] [--force]` | Landmark and tour narration in `public/audio/{en,tr}`, and `src/content/audio.ts` |
+| `scripts/characters_elevenlabs.ts` | Character intros and reflections in `public/audio/characters` |
+| `scripts/barks_elevenlabs.ts` | Townspeople lines in `public/audio/barks` |
+
+The research pack (sources, GeoJSON, DEM, image manifest) is in `research/`. See `research/SUMMARY.md`.
+
+## Deploy
+
+Docker multi-stage build (node 22 → nginx 1.27) on Dokploy, using `docker-compose.dokploy.yml`. Pass `VITE_GOOGLE_MAPS_KEY` as a build argument. The nginx config is in `nginx.conf`, with caching rules, security headers and the CSP.

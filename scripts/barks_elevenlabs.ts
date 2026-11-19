@@ -15,7 +15,7 @@ for (const b of BARKS) {
     const voice = V[g][i++ % 2]
     const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice}?output_format=mp3_44100_96`, {
       method: 'POST', headers: { 'xi-api-key': KEY, 'content-type': 'application/json', accept: 'audio/mpeg' },
-      body: JSON.stringify({ text: b.text, model_id: 'eleven_multilingual_v2', language_code: b.lang === 'la' ? 'it' : 'el', voice_settings: { stability: 0.45, similarity_boost: 0.75, style: 0.45, use_speaker_boost: true, speed: 0.95 } }),
+      body: JSON.stringify({ text: b.text, model_id: 'eleven_multilingual_v2', language_code: b.lang === 'la' ? 'it' : 'el' /* grc, koi, byz → Greek */, voice_settings: { stability: 0.45, similarity_boost: 0.75, style: 0.45, use_speaker_boost: true, speed: 0.95 } }),
     })
     if (!res.ok) { console.log(file, 'FAILED', res.status, (await res.text()).slice(0, 200)); continue }
     writeFileSync(file, Buffer.from(await res.arrayBuffer())); console.log(file, 'ok')

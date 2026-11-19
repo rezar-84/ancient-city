@@ -1,6 +1,34 @@
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { join, relative } from 'node:path'
+
+/** Build-only: write a { "/path": contentHash } manifest of public media into dist/sw.js, so the service
+ *  worker serves those files cache-first and re-downloads only files whose content changed. */
+function mediaManifest(): Plugin {
+  const DIRS = ['terrain', 'models', 'tex', 'img', 'renders', 'art', 'characters', 'audio', 'brand']
+  const SKIP = /\.(md|txt|json|usdz)$/i // docs/licences, small JSON meta, and AR Quick Look files (opened outside the page)
+  let outDir = 'dist'
+  return {
+    name: 'media-manifest',
+    apply: 'build',
+    configResolved(c) { outDir = c.build.outDir },
+    closeBundle() {
+      const manifest: Record<string, string> = {}
+      const walk = (dir: string) => {
+        for (const name of readdirSync(dir)) {
+          const p = join(dir, name)
+          if (statSync(p).isDirectory()) walk(p)
+          else if (!SKIP.test(name)) manifest['/' + relative('public', p).split('\\').join('/')] = createHash('sha1').update(readFileSync(p)).digest('hex').slice(0, 12)
+        }
+      }
+      for (const d of DIRS) { try { walk(join('public', d)) } catch { /* dir absent */ } }
+      const sw = join(outDir, 'sw.js')
+      writeFileSync(sw, `self.__MEDIA_MANIFEST__ = ${JSON.stringify(manifest)};\n` + readFileSync(sw, 'utf8'))
+    },
+  }
+}
 
 /** Dev-only: POST /__save-render?id=<slug> with a JPEG data URL body -> public/renders/<slug>.jpg */
 function saveRenders(): Plugin {
@@ -25,6 +53,6 @@ function saveRenders(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), saveRenders()],
+  plugins: [react(), saveRenders(), mediaManifest()],
   build: { chunkSizeWarningLimit: 1500 },
 })

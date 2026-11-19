@@ -4,10 +4,12 @@ const fs = require('node:fs')
 const vm = require('node:vm')
 const ts = require('typescript')
 let THREE
-const setup = Promise.all([import('three/examples/jsm/loaders/GLTFLoader.js'), import('three/examples/jsm/utils/SkeletonUtils.js'), import('three')]).then(async ([loader, skeleton, three]) => {
+const setup = Promise.all([import('three/examples/jsm/loaders/GLTFLoader.js'), import('three/examples/jsm/utils/SkeletonUtils.js'), import('three'), import('three/examples/jsm/libs/meshopt_decoder.module.js')]).then(async ([loader, skeleton, three, meshopt]) => {
   THREE = three
+  // The packaged GLBs use lossless EXT_meshopt_compression (float attributes kept, no quantization).
+  await meshopt.MeshoptDecoder.ready
   const code = ts.transpileModule(fs.readFileSync('src/walk/riggedCitizen.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
-  const context = { exports: {}, require: id => id === 'three' ? THREE : id.includes('GLTFLoader') ? loader : skeleton }
+  const context = { exports: {}, require: id => id === 'three' ? THREE : id.includes('GLTFLoader') ? loader : id.includes('meshopt') ? meshopt : skeleton }
   vm.runInNewContext(code, context)
   async function load(name) {
     const raw = fs.readFileSync(`public/models/citizens/${name}.glb`), length = raw.readUInt32LE(12)
@@ -19,7 +21,7 @@ const setup = Promise.all([import('three/examples/jsm/loaders/GLTFLoader.js'), i
     const binary = raw.subarray(20 + length)
     const header = Buffer.alloc(20); header.writeUInt32LE(0x46546c67, 0); header.writeUInt32LE(2, 4); header.writeUInt32LE(20 + chunk.length + padding.length + binary.length, 8); header.writeUInt32LE(chunk.length + padding.length, 12); header.writeUInt32LE(0x4e4f534a, 16)
     const result = Buffer.concat([header, chunk, padding, binary])
-    return new loader.GLTFLoader().parseAsync(result.buffer.slice(result.byteOffset, result.byteOffset + result.byteLength), '')
+    return new loader.GLTFLoader().setMeshoptDecoder(meshopt.MeshoptDecoder).parseAsync(result.buffer.slice(result.byteOffset, result.byteOffset + result.byteLength), '')
   }
   return { ...context.exports, male: await load('male'), female: await load('female'), motions: await load('motions') }
 })
@@ -226,4 +228,32 @@ test('children and adolescents scale head/cadence independently and merchant rea
   assert.ok(Array.from(childPos.array).every(Number.isFinite))
 
   citizen.dispose()
+})
+
+test('rigs keep frustum culling with a fixed sphere, accessories skip shadows, and off-screen updates defer animation', async () => {
+  const { instantiateCitizen, male, motions, CITIZEN_DETAIL } = await setup
+  const c = instantiateCitizen(male, motions, 'roman', palette())
+  c.configure({ role: 'soldier', cut: 'work', fabric: 'wool', age: 'adult' })
+  const cloth = c.root.getObjectByName('SimulatedTunic')
+  let casters = 0
+  c.root.traverse(o => {
+    if (!o.isMesh) return
+    assert.notEqual(o.frustumCulled, false, `${o.name} must stay frustum culled`)
+    if (o.isSkinnedMesh) assert.ok(o.boundingSphere && o.boundingSphere.radius > 0, 'skinned parts carry a fixed bounding sphere')
+    if (o.castShadow) casters++
+  })
+  assert.ok(cloth.geometry.boundingSphere.radius > 0)
+  assert.ok(casters <= 4, `only body, tunic top, skirt and simulated hem cast shadows (got ${casters})`)
+  const arm = c.root.getObjectByName('upperarm_l')
+  for (let i = 0; i < 10; i++) c.update(1 / 60, { speed: 1.5, grounded: true, wave: false, look: 0 })
+  const before = arm.quaternion.clone()
+  for (let i = 0; i < 10; i++) c.update(1 / 60, { speed: 1.5, grounded: true, wave: false, look: 0 }, CITIZEN_DETAIL.offscreen)
+  assert.ok(arm.quaternion.equals(before), 'off-screen rigs do not run the mixer')
+  c.update(1 / 60, { speed: 1.5, grounded: true, wave: false, look: 0 }, CITIZEN_DETAIL.animated)
+  assert.ok(!arm.quaternion.equals(before), 'deferred time is applied when the rig is seen again')
+  assert.equal(cloth.visible, false, 'distant rigs show the skinned hem instead of the simulated one')
+  c.update(1 / 60, { speed: 1.5, grounded: true, wave: false, look: 0 })
+  assert.equal(cloth.visible, true)
+  assert.ok(Array.from(cloth.geometry.getAttribute('position').array).every(Number.isFinite))
+  c.dispose()
 })

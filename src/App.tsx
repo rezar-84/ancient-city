@@ -15,6 +15,7 @@ import { useTimeKeys } from './ui/TimeOfDay'
 import { LandmarkPanel } from './ui/LandmarkPanel'
 import { PlanOverlay } from './ui/PlanOverlay'
 import { TodayStatus } from './ui/TodayStatus'
+import { MapAttribution } from './ui/MapAttribution'
 import { TourOverlay } from './modes/Tour'
 import { Loader } from './ui/Loader'
 import { Viewpoints } from './ui/Viewpoints'
@@ -46,11 +47,13 @@ function Hint() {
 function Keys() {
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement) return
+      const el = e.target as HTMLElement | null
+      if (el && (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement || el.isContentEditable)) return
       const s = useApp.getState()
       if (e.key === 'Escape' && s.mode !== 'walk') { if (s.arOpen) s.setAR(false); else s.select(null) }
-      if (e.key === 'p' && e.shiftKey) s.togglePerf()
-      if (e.key === 'l') s.setLang(s.lang === 'en' ? 'tr' : 'en')
+      // with Shift held the browser reports the upper-case key
+      if (e.key.toLowerCase() === 'p' && e.shiftKey) s.togglePerf()
+      if (e.key.toLowerCase() === 'l' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) s.setLang(s.lang === 'en' ? 'tr' : 'en')
     }
     window.addEventListener('keydown', on)
     return () => window.removeEventListener('keydown', on)
@@ -91,6 +94,7 @@ export default function App() {
       <TopBar />
       <PlanOverlay />
       <TodayStatus />
+      <MapAttribution />
       <LandmarkPanel />
       <TourOverlay />
       <Viewpoints />

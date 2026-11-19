@@ -3,7 +3,7 @@ import { useApp, type Lang } from './store'
 const STRINGS = {
   title: { en: 'Hierapolis', tr: 'Hierapolis' },
   subtitle: { en: 'The Holy City above the white terraces of Pamukkale', tr: 'Pamukkale\'nin beyaz travertenleri üzerindeki Kutsal Kent' },
-  tagline: { en: 'Phrygia · c. 190 BC – AD 1354 · UNESCO World Heritage since 1988', tr: 'Frigya · MÖ y. 190 – MS 1354 · 1988\'den beri UNESCO Dünya Mirası' },
+  tagline: { en: 'Phrygia · Hellenistic foundation to the 14th century AD · UNESCO World Heritage since 1988', tr: 'Frigya · Helenistik kuruluştan MS 14. yüzyıla · 1988\'den beri UNESCO Dünya Mirası' },
   explore: { en: 'Explore the city', tr: 'Kenti keşfet' },
   tour: { en: 'Guided tour', tr: 'Rehberli tur' },
   plan: { en: 'Archaeological plan', tr: 'Arkeolojik plan' },

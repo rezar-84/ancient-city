@@ -54,7 +54,10 @@ export function WalkBarks() {
         return
       }
       const female = NPC_STATE.female[best] === 1
-      const pool = BARKS.filter((b) => b.lang === langForYear(s.year) && (b.gender === 'any' || b.gender === (female ? 'f' : 'm')))
+      // Townspeople speak the city's Greek; under Rome only soldiers on guard bark in Latin
+      const era = langForYear(s.year)
+      const lang3 = era === 'koi' && NPC_STATE.guard?.[best] === 1 ? 'la' : era
+      const pool = BARKS.filter((b) => b.lang === lang3 && (b.gender === 'any' || b.gender === (female ? 'f' : 'm')))
       if (!pool.length) return
       const b = pool[Math.floor(Math.random() * pool.length)]
       const dx = NPC_STATE.x[best] - walk.x, dz = NPC_STATE.z[best] - walk.z

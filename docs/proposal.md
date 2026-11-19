@@ -30,6 +30,7 @@ Existing digital material is fragmented. There are photos, a few 3D scans of sin
 | **Archaeological plan** | Top-down parchment map with 5 m contours, numbered legend, north arrow, the street grid, walls and necropoleis drawn from OSM archaeological mapping; a **timeline slider** (200 BC – AD 1400) adds and removes monuments by period; **historic maps** viewer (Laborde 1838, Humann 1887, modern plans) |
 | **Ancient / Today** | Crossfade between the reconstruction and today's site: Google Photorealistic 3D Tiles, or satellite imagery as a fallback |
 | **Guided tour** | 9-stop narrated tour (~6 min) with scripted camera flights, subtitles and ElevenLabs voice in EN and TR; keyboard control (Space, ←/→) so the tour can be the presentation itself |
+| **Walk the city** | Choose one of six characters (Hellenistic, Roman, Byzantine) and walk the streets in first or third person among townspeople, carts and animals, with greetings, voiced character reflections at monuments and a fast-travel map |
 | **AR** | `<model-viewer>`: WebXR / Scene Viewer on Android, Quick Look (USDZ) on iPhone |
 | **Print guide** | A4 booklet (`/#/guide`): cover, intro, timeline, plan with numbered monuments, one card per monument, sources and credits, QR back to the site |
 | **Atmosphere** | Golden-hour lighting from the west (as at the real site), ambient soundscape, drifting CO₂ mist at the Ploutonion |
@@ -56,7 +57,7 @@ Existing digital material is fragmented. There are photos, a few 3D scans of sin
 | AR | `@google/model-viewer` (GLB + USDZ) | Cross-platform AR from the browser |
 | Hosting | Docker (nginx) on Dokploy, `ar.ferially.com` | One-command redeploy, HTTPS |
 
-**Performance target:** MacBook Air M2 (fanless, integrated GPU) and mid-range phones. The DPR is capped at 1.75 and adapts down under load, with a single shadow-casting light, no post-processing, merged and instanced geometry, and lazily loaded media. Measured scene: ~180 draw calls and ~330k triangles; initial download ≈ 5 MB.
+**Performance target:** MacBook Air M2 (fanless, integrated GPU) and mid-range phones. The DPR is capped at 1.75 and adapts down under load. One shadow-casting sun, merged and instanced geometry, and lazily loaded media are used throughout. Desktop adds post-processing (N8AO ambient occlusion, SMAA, tone mapping), which switches off automatically when the frame rate drops; phones get a lighter tier. Walk mode adds a few torch point lights and rigged citizens with a near/far LOD. Measured on the Roman walking route (headless Chrome, Intel HD 620, 1280 × 800, DPR 1): ~344 draw calls and ~1.09 M triangles; initial download ≈ 11.6 MB. A service worker caches terrain, models, textures and audio after the first visit. Method and results: `docs/benchmarks/`.
 
 ## 5. AI tools used, and a mini benchmark
 
@@ -68,7 +69,7 @@ The project was built with three AI coding assistants, each on tasks it was best
 | Procedural building generators (12 monuments, materials, terrain snapping) | OpenAI Codex CLI | Strict-TypeScript, compiling generators on the first pass (~38k tokens); dimensions tuned afterwards |
 | Narration (EN + TR) and ambient soundscape | ElevenLabs | 52 narration clips plus a soundscape loop |
 
-Evaluation notes are in `docs/evaluation.md`.
+Benchmark method and measurements are in `docs/benchmarks/`.
 
 ## 6. Evaluation plan
 
@@ -79,7 +80,6 @@ Evaluation notes are in `docs/evaluation.md`.
 
 ## 7. Future work — promoting Turkish heritage
 
-- First-person "walk the city" mode with a character from each era (planned as the next phase).
 - Higher-detail photogrammetry for hero monuments (theatre, Frontinus Gate).
 - The same pipeline (terrain, OSM footprints, generators, cards, tour, print guide) for Ephesus, Aphrodisias, Laodicea, Pergamon and Troy, in a "Turkish Heritage Atlas".
 - On-site mode: geolocation with "you are here" on the plan, offline caching for visitors.
