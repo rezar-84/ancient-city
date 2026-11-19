@@ -96,13 +96,54 @@ export function createTemple(o: TempleOptions = {}): THREE.Group {
     b.box('travertine', w * 0.68, topY + 2.6, 0.42, 0, (topY - 2.6) / 2, l / 2 + (steps - i - 0.5) * 0.42);
   }
 
-  // Ploutonion chthonic grotto mouth & stepped viewing parapet (D'Andria 2013)
+  // Late Severan Sanctuary of Apollo precinct (Ismaelli / Semeraro / Limoncelli):
+  // dark blue-grey Denizli marble (greco scritto) lower terrace contrasting with white marble Temple A,
+  // axial marble sacrificial altar, and flanking sanctuary temenos colonnades.
+  if (eraPhase === 'roman' && !grotto) {
+    const tW = w + 16, tL = l + 15, tZ = 2.5;
+    b.box('limestone', tW, 3.0, tL, 0, -1.65, tZ);
+    b.box('dark', tW - 0.8, 0.14, tL - 0.8, 0, -0.08, tZ);
+    b.box('marble', tW, 0.16, 0.55, 0, -0.07, tZ + tL / 2 - 0.28);
+    b.box('marble', tW, 0.16, 0.55, 0, -0.07, tZ - tL / 2 + 0.28);
+    // Axial marble sacrificial altar in front of the temple stair
+    const altarZ = l / 2 + steps * 0.42 + 3.0;
+    b.box('marble', 3.4, 0.28, 2.2, 0, 0.14, altarZ);
+    b.box('marble', 2.4, 1.15, 1.4, 0, 0.85, altarZ);
+    b.box('marble', 2.8, 0.22, 1.7, 0, 1.52, altarZ);
+    // Flanking white marble temenos colonnades framing the sanctuary terrace
+    const portCols: Placement[] = [];
+    const portH = Math.min(5.6, h * 0.62);
+    for (const side of [-1, 1]) {
+      const px = side * (w / 2 + 6.4);
+      for (let k = -4; k <= 4; k++) portCols.push({ x: px, y: 0, z: tZ + k * 3.8 });
+      b.box('marble', 0.72, 0.45, 32, px, portH + 0.22, tZ);
+      b.box('roofTile', 3.6, 0.28, 32.4, px + side * 1.4, portH + 0.58, tZ);
+    }
+    b.repeated('marble', column(portH, 0.26), portCols);
+  }
+
+  // Ploutonion chthonic grotto mouth, U-shaped spectator theatron tiers & Hades/Cerberus guardian plinths (D'Andria 2013)
   if (grotto) {
     const gz = -l / 2 - 0.35;
-    b.add('travertine', arch(2.2, Math.min(2.4, p + 1.1), 1.1, 0.65), { x: 0, y: -0.2, z: gz });
-    b.box('dark', 2.1, 2.2, 0.35, 0, 0.9, gz + 0.35);
-    for (let row = 0; row < 3; row++) {
-      b.box('limestone', w + 3.6 + row * 1.4, 0.36, 0.75, 0, 0.18 + row * 0.34, gz - 3.6 - row * 0.78);
+    // Recessed travertine grotto portal with engaged pilasters and dark fissure mouth
+    b.add('travertine', arch(2.4, Math.min(2.6, p + 1.2), 1.2, 0.7), { x: 0, y: -0.2, z: gz });
+    b.box('dark', 2.2, 2.4, 0.35, 0, 0.95, gz + 0.35);
+    // Flanking marble plinths & guardian statues (Hades / Cerberus / underworld serpents)
+    for (const side of [-1, 1]) {
+      b.box('marble', 1.15, 1.05, 1.15, side * 2.55, 0.525, gz - 0.85);
+      b.add('marble', new THREE.CylinderGeometry(0.28, 0.34, 1.35, 8), { x: side * 2.55, y: 1.72, z: gz - 0.85 });
+    }
+    // 5-row U-shaped viewing theatron steps safely above the ground-level CO₂ pool
+    for (let row = 0; row < 5; row++) {
+      const rowY = 0.22 + row * 0.36;
+      const backZ = gz - 4.2 - row * 0.82;
+      const spanX = w + 4.4 + row * 1.5;
+      b.box('limestone', spanX, 0.38, 0.78, 0, rowY, backZ);
+      // Side wings of the U-shaped spectator enclosure
+      const wingLen = 4.2 + row * 0.82;
+      for (const side of [-1, 1]) {
+        b.box('limestone', 0.78, 0.38, wingLen, side * (spanX / 2 - 0.39), rowY, gz - wingLen / 2);
+      }
     }
   }
   return b.finish();

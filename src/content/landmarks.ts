@@ -206,10 +206,23 @@ const base: Landmark[] = [
       tr: 'Apollon Arkhegetes — “kurucu” — Hierapolis’in baş tanrısıydı; tapınağı kentin kalbindeki kutsal alanda, Plutonion mağarasının hemen üstünde yükselirdi. Tanrının kehanet merkezine burada danışılırdı; görülen kalıntılar MS 3. yüzyıla aittir.',
     },
     facts: {
-      en: ['Temple (~24 × 18 m within a ~60 × 60 m peribolos) on a high stepped podium', 'Alphabetical and verse oracle inscriptions found in the sanctuary'],
-      tr: ['~60 × 60 m peribolos içinde yüksek basamaklı podyum üzerinde ~24 × 18 m tapınak', 'Kutsal alanda alfabetik kehanet yazıtları bulundu'],
+      en: [
+        'Temple A (~24 × 18 m within a ~60 × 60 m terraced peribolos) rebuilt in white marble during the Late Severan period',
+        'Paved lower terrace in dark blue-grey Denizli marble (greco scritto) contrasted starkly with the white marble temple and temenos colonnades (Ismaelli, Semeraro & Limoncelli)',
+        'Alphabetical and verse oracle inscriptions found in the sanctuary',
+      ],
+      tr: [
+        '~60 × 60 m teraslı peribolos içinde Geç Severus döneminde beyaz mermerle yenilenen Tapınak A (~24 × 18 m)',
+        'Koyu mavi-gri Denizli mermeriyle (greco scritto) döşeli alt teras, beyaz mermer tapınak ve revaklarla güçlü bir kontrast oluştururdu (Ismaelli, Semeraro & Limoncelli)',
+        'Kutsal alanda alfabetik ve manzum kehanet yazıtları bulundu',
+      ],
     },
-    images: [], sources: [{ title: 'Wikipedia — Hierapolis', url: 'https://en.wikipedia.org/wiki/Hierapolis' }],
+    images: [],
+    sources: [
+      { title: 'Ismaelli — Late Severan Reconstruction of Temple A (Academia.edu)', url: 'https://www.academia.edu/104026588/The_Late_Severan_Reconstruction_of_Temple_A_in_the_Sanctuary_of_Apollo_in_Hierapolis_in_Phrygia_Architectural_Design_and_Building_Practices_at_a_Turning_Point_in_the_City_s_History' },
+      { title: 'Limoncelli — Sanctuary of Apollo Virtual Reconstruction', url: 'https://www.academia.edu/figures/5944270/figure-1-hierapolis-sanctuary-of-apollo-virtual' },
+      { title: 'Wikipedia — Hierapolis', url: 'https://en.wikipedia.org/wiki/Hierapolis' },
+    ],
     builder: 'temple', builderOpts: { width: 18, length: 26, columnHeight: 9 }, rotation: -60, view: { bearing: 240, elev: 24, dist: 120 },
   },
   {
@@ -226,7 +239,7 @@ const base: Landmark[] = [
       tr: ['2013’te Francesco D’Andria başkanlığındaki İtalyan Arkeoloji Heyeti tarafından yeniden bulundu', 'Burada Pluton ve üç başlı bekçi köpek Kerberos heykelleri bulundu', 'CO₂ gece ve şafakta zeminin üzerinde ölümcül bir katman oluşturur'],
     },
     didYouKnow: { en: 'Scientists measured CO₂ concentrations high enough to kill a bull within minutes — but only close to the ground, which explains how the tall priests survived.', tr: 'Bilim insanları bir boğayı dakikalar içinde öldürecek CO₂ yoğunlukları ölçtü — ama yalnızca yere yakın; bu da uzun boylu rahiplerin nasıl hayatta kaldığını açıklar.' },
-    images: [], sources: [{ title: 'Wikipedia — Ploutonion at Hierapolis', url: 'https://en.wikipedia.org/wiki/Ploutonion_at_Hierapolis' }, { title: 'D’Andria, “The Ploutonion of Hierapolis in light of recent research (2013–17)”', url: 'https://www.academia.edu/117925833/The_Ploutonion_of_Hierapolis_in_light_of_recent_research_2013_17_' }],
+    images: [], sources: [{ title: 'Wikipedia — Ploutonion at Hierapolis', url: 'https://en.wikipedia.org/wiki/Ploutonion_at_Hierapolis' }, { title: 'D’Andria, “The Ploutonion of Hierapolis in light of recent research (2013–17)”', url: 'https://www.academia.edu/117925833/The_Ploutonion_of_Hierapolis_in_light_of_recent_research_2013_17_' }, { title: 'CNN Gallery — Ploutonion at Hierapolis', url: 'https://edition.cnn.com/2018/03/09/world/gallery/plutonium-hierapolis-photos' }],
     builder: 'temple', builderOpts: { width: 9, length: 13, columnHeight: 5, frontColumns: 4, podiumHeight: 1.5, grotto: true }, rotation: 120, view: { bearing: 210, elev: 28, dist: 80 }, pinHeight: 16,
   },
   {
