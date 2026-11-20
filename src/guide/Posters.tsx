@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import { useApp } from '../store'
 import { formatYear, useT } from '../i18n'
@@ -6,7 +6,7 @@ import { LANDMARKS } from '../content/landmarks'
 import { ERAS, TIMELINE } from '../content/timeline'
 import { PlanSVG } from './PlanSVG'
 import { LangSwitch } from '../ui/TopBar'
-import { useFit } from './useFit'
+import { useFit, usePrintPage } from './useFit'
 import './print.css'
 
 type Kind = 'overview' | 'plan' | 'timeline'
@@ -24,13 +24,7 @@ export default function Posters() {
   const [zoomed, setZoomed] = useState(false)
   const fit = useFit(size === 'a3' ? 297 : 420, zoomed)
 
-  useEffect(() => {
-    const st = document.createElement('style')
-    st.textContent = `@page { size: ${size.toUpperCase()} portrait; margin: 0; }`
-    document.head.appendChild(st)
-    document.body.classList.add('printing')
-    return () => { st.remove(); document.body.classList.remove('printing') }
-  }, [size])
+  usePrintPage(size)
 
   const footer = (
     <footer className="absolute inset-x-[1.6em] bottom-[1.2em] flex items-center justify-between gap-[1em] border-t border-current pt-[0.6em] font-sans text-[0.8em] opacity-90">

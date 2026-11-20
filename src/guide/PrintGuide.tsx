@@ -1,4 +1,4 @@
-import { useEffect, useMemo, type ReactNode } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import { useApp } from '../store'
 import { formatYear, useT } from '../i18n'
@@ -14,7 +14,7 @@ import { PhaseMaps, useTerrain } from './WallMap'
 import { hillshadeURL } from './mapData'
 import { LangSwitch } from '../ui/TopBar'
 import type { Landmark } from '../content/types'
-import { useFit } from './useFit'
+import { useFit, usePrintPage } from './useFit'
 import './print.css'
 
 type Lang = 'en' | 'tr'
@@ -45,7 +45,7 @@ function voiceFor(l: Landmark) {
 export default function PrintGuide() {
   const t = useT()
   const lang = useApp((s) => s.lang)
-  useEffect(() => { document.body.classList.add('printing'); return () => document.body.classList.remove('printing') }, [])
+  usePrintPage('a4')
   const fit = useFit(210)
   const terrain = useTerrain()
   const relief = useMemo(() => (terrain ? hillshadeURL(terrain) : null), [terrain])

@@ -10,7 +10,7 @@ import type { Landmark } from '../content/types'
 import { LAYERS, MapFurniture, MapLayers, PALETTE, type LayerId, type Theme, type Underlay } from './MapLayers'
 import { NATURE, PHRYGIAN, contourPaths, eraOf, hillshadeURL, lead, loadTerrainGrid, makeProjector, markerColor, shortLabel, standing, timeX, type Rect, type TerrainGrid } from './mapData'
 import { WallMapBack } from './WallMapBack'
-import { useFit } from './useFit'
+import { useFit, usePrintPage } from './useFit'
 import './print.css'
 
 type Orient = 'portrait' | 'landscape'
@@ -91,7 +91,7 @@ export function useTerrain() {
 export default function WallMap() {
   const t = useT()
   const lang = useApp((s) => s.lang)
-  const [orient, setOrient] = useState<Orient>('portrait')
+  const [orient, setOrient] = useState<Orient>(() => (window.location.hash.includes('landscape') ? 'landscape' : 'portrait'))
   const [theme, setTheme] = useState<Theme>('parchment')
   const [underlay, setUnderlay] = useState<Underlay>('ancient')
   const [mode, setMode] = useState<Mode>('poster')
@@ -105,13 +105,7 @@ export default function WallMap() {
   const fit = useFit(L.W, zoomed)
   const url = window.location.origin
 
-  useEffect(() => {
-    const st = document.createElement('style')
-    st.textContent = `@page { size: A2 ${orient}; margin: 0; }`
-    document.head.appendChild(st)
-    document.body.classList.add('printing')
-    return () => { st.remove(); document.body.classList.remove('printing') }
-  }, [orient])
+  usePrintPage('a2', orient)
 
   const proj = useMemo(() => makeProjector(BOUNDS, L.map, 250, IMAGERY), [L])
   const relief = useMemo(() => (terrain ? hillshadeURL(terrain, theme === 'night') : null), [terrain, theme])

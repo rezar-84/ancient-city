@@ -15,7 +15,6 @@
 /* sheets are scaled to the screen; keep the scaled gap between them readable on phones */
 @media screen and (max-width: 640px) { .guide .page, .poster { margin: 6mm auto; } }
 
-@page { size: A4; margin: 0; }
 @media print {
   html, body, #root { height: auto !important; overflow: visible !important; background: #fff !important; }
   .no-print { display: none !important; }
